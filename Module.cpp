@@ -354,8 +354,6 @@ void Network::calculateSteadyState(int numTh) {
 	for (int i = 0; i < numTh; i++)
 		addedSize[i] = new double[nNode];
 
-
-
 	do {
 
 		// calculate sum of the size of dangling nodes.
@@ -383,28 +381,45 @@ void Network::calculateSteadyState(int numTh) {
 				danglingSize += danglingsz;
 			}
 			cout << "final summed up dangling value:" << danglingSize << endl;
-		}
-
-/*		// calculate sum of the size of dangling nodes.
-#pragma omp parallel reduction (+:danglingSize)
-		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
-
-			int start, end;
-			findAssignedPart(&start, &end, nDanglings, nTh, myID);
-
-			for (int i = start; i < end; i++) {
-				cout << "i:" << i << " danglings[i]: " << danglings[i]
-						<< " rank" << rank << " size_tmp[danglings[i]]: "
-						<< size_tmp[danglings[i]] << " iteration number: "
-						<< iteration << endl;
-				danglingSize += size_tmp[danglings[i]];
+			//we need to send the value of danglingSize to all of the process back again so that they have the updated value
+			for (int prId = 1; prId < size; prId++) {
+				cout << "before sending from:" << prId << " value of dangling:"
+						<< danglingSize << endl;
+				MPI_Send(&danglingSize, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
 			}
 		}
-		cout << "final summed up dangling value:" << danglingSize << endl;*/
+
+		if (rank != 0) {
+			danglingSize = 0.0;
+			MPI_Recv(&danglingSize, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
+			MPI_STATUSES_IGNORE);
+			cout << "danglingSize value: " << danglingSize << " rank:" << rank
+					<< endl;
+		}
+
+		/*		// calculate sum of the size of dangling nodes.
+		 #pragma omp parallel reduction (+:danglingSize)
+		 {
+		 int myID = omp_get_thread_num();
+		 int nTh = omp_get_num_threads();
+
+		 int start, end;
+		 findAssignedPart(&start, &end, nDanglings, nTh, myID);
+
+		 for (int i = start; i < end; i++) {
+		 cout << "i:" << i << " danglings[i]: " << danglings[i]
+		 << " rank" << rank << " size_tmp[danglings[i]]: "
+		 << size_tmp[danglings[i]] << " iteration number: "
+		 << iteration << endl;
+		 danglingSize += size_tmp[danglings[i]];
+		 }
+		 }
+		 cout << "final summed up dangling value:" << danglingSize << endl;*/
 
 		// flow via teleportation.
+		// faysal: I think in the following block I do not need to call findAssignedPart again
+		//faysal: I need to send update of the node vector back to all of the process
+
 #pragma omp parallel
 		{
 			int myID = omp_get_thread_num();
@@ -417,9 +432,15 @@ void Network::calculateSteadyState(int numTh) {
 				nodes[i].setSize(
 						(alpha + beta * danglingSize)
 								* nodes[i].TeleportWeight());//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
-															 //size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
+								//size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
 			}
 		}
+
+		/*		for (int i = start; i < end; i++) {
+		 nodes[i].setSize(
+		 (alpha + beta * danglingSize) * nodes[i].TeleportWeight());	//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
+		 //size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
+		 }*/
 
 		int realNumTh = 0;
 
