@@ -345,6 +345,7 @@ void Network::calculateSteadyState(int numTh) {
 	double danglingSize = 0.0;
 	double sqdiff = 1.0;
 	double sum = 0.0;
+	double sum_s = 0.0;
 	double danglingsz = 0.0;
 	int value = 0;
 	// Generate addedSize array per each thread, so that we don't need to use lock for each nodeSize addition.
@@ -501,34 +502,69 @@ void Network::calculateSteadyState(int numTh) {
 
 		// Normalize of node size.
 		sum = 0.0;
-#pragma omp parallel reduction (+:sum)
-		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
+		sum_s = 0.0;
+		/*
+		 #pragma omp parallel reduction (+:sum)
+		 {
+		 int myID = omp_get_thread_num();
+		 int nTh = omp_get_num_threads();
 
-			int start, end;
-			findAssignedPart(&start, &end, nNode, nTh, myID);
+		 int start, end;
+		 findAssignedPart(&start, &end, nNode, nTh, myID);
 
-			for (int i = start; i < end; i++)
-				sum += nodes[i].Size();
+		 for (int i = start; i < end; i++)
+		 sum += nodes[i].Size();
+		 }
+		 */
+
+		findAssignedPart(&start, &end, nNode, size, rank);
+		for (int i = start; i < end; i++) {
+			sum_s += nodes[i].Size();
+		}
+		if (rank != 0) {
+			MPI_Send(&sum_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 		}
 
-		cout<<"final value of sum:"<<sum<<" iteration:"<<iteration<<endl;
+		if (rank == 0) {
+			sum = sum_s;
+			for (int prId = 1; prId < size; prId++) {
+				MPI_Recv(&sum_s, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD,
+				MPI_STATUSES_IGNORE);
+				sum += sum_s;
+			}
+			for (int prId = 1; prId < size; prId++) {
+				MPI_Send(&sum, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
+			}
+		}
+
+		if (rank != 0) {
+			MPI_Recv(&sum, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
+			MPI_STATUSES_IGNORE);
+		}
+
+		cout << "final value of sum:" << sum << " iteration:" << iteration
+				<< endl;
 		sqdiff = 0.0;
 
-#pragma omp parallel reduction (+:sqdiff)
-		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
+		/*#pragma omp parallel reduction (+:sqdiff)
+		 {
+		 int myID = omp_get_thread_num();
+		 int nTh = omp_get_num_threads();
 
-			int start, end;
-			findAssignedPart(&start, &end, nNode, nTh, myID);
+		 int start, end;
+		 findAssignedPart(&start, &end, nNode, nTh, myID);
 
-			for (int i = start; i < end; i++) {
-				nodes[i].setSize(nodes[i].Size() / sum);
-				sqdiff += fabs(nodes[i].Size() - size_tmp[i]);
-				size_tmp[i] = nodes[i].Size();
-			}
+		 for (int i = start; i < end; i++) {
+		 nodes[i].setSize(nodes[i].Size() / sum);
+		 sqdiff += fabs(nodes[i].Size() - size_tmp[i]);
+		 size_tmp[i] = nodes[i].Size();
+		 }
+		 }*/
+
+		for (int i = 0; i < nNode; i++) {
+			nodes[i].setSize(nodes[i].Size() / sum);
+			sqdiff += fabs(nodes[i].Size() - size_tmp[i]);
+			size_tmp[i] = nodes[i].Size();
 		}
 
 		iter++;
