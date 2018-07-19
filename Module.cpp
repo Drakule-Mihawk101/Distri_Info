@@ -346,7 +346,7 @@ void Network::calculateSteadyState(int numTh) {
 	double danglingSize = 0.0;
 	double sqdiff = 1.0;
 	double sum = 0.0;
-
+	double danglingsz = 0.0;
 	int value = 0;
 	// Generate addedSize array per each thread, so that we don't need to use lock for each nodeSize addition.
 
@@ -354,28 +354,47 @@ void Network::calculateSteadyState(int numTh) {
 	for (int i = 0; i < numTh; i++)
 		addedSize[i] = new double[nNode];
 
+
+
 	do {
 
+		// calculate sum of the size of dangling nodes.
 		iteration++;
 		danglingSize = 0.0;
-
+		danglingsz = 0.0;
+		int start, end, id;
+		findAssignedPart(&start, &end, nDanglings, size, rank);
+		// assign dangling array computation to itself rank=0 process
+		for (int i = start; i < end; i++) {
+			cout << "i:" << i << " danglings[i]: " << danglings[i] << " rank"
+					<< rank << " size_tmp[danglings[i]]: "
+					<< size_tmp[danglings[i]] << " iteration number: "
+					<< iteration << endl;
+			danglingsz += size_tmp[danglings[i]];
+		}
+		if (rank != 0) {
+			MPI_Send(&danglingsz, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+		}
 		if (rank == 0) {
-			int s_start, s_end, id;
-
-			for (id = 1; id < size; id++) {
-				findAssignedPart(&s_start, &s_end, nDanglings, size, id);
-				chunkobject.start = s_start;
-				chunkobject.end = s_end;
-				chunkobject.danglingsz = 0.0;
-				/*cout << "nDanglings: " << nDanglings << " chunkobject.start:"
-				 << chunkobject.start << " chunkobject.end"
-				 << chunkobject.end << endl;*/
-				//cout << "sending data to process:" << id << endl;
-				MPI_Send(&chunkobject, 1, chunktype, id, 0, MPI_COMM_WORLD);
+			danglingSize += danglingsz;
+			for (int prId = 1; prId < size; prId++) {
+				MPI_Recv(&danglingsz, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD,
+				MPI_STATUSES_IGNORE);
+				danglingSize += danglingsz;
 			}
-			// assign dangling array computation to itself rank=0 process
-			findAssignedPart(&s_start, &s_end, nDanglings, size, rank);
-			for (int i = s_start; i < s_end; i++) {
+			cout << "final summed up dangling value:" << danglingSize << endl;
+		}
+
+/*		// calculate sum of the size of dangling nodes.
+#pragma omp parallel reduction (+:danglingSize)
+		{
+			int myID = omp_get_thread_num();
+			int nTh = omp_get_num_threads();
+
+			int start, end;
+			findAssignedPart(&start, &end, nDanglings, nTh, myID);
+
+			for (int i = start; i < end; i++) {
 				cout << "i:" << i << " danglings[i]: " << danglings[i]
 						<< " rank" << rank << " size_tmp[danglings[i]]: "
 						<< size_tmp[danglings[i]] << " iteration number: "
@@ -383,64 +402,9 @@ void Network::calculateSteadyState(int numTh) {
 				danglingSize += size_tmp[danglings[i]];
 			}
 		}
+		cout << "final summed up dangling value:" << danglingSize << endl;*/
 
-		if (rank != 0) {
-			//cout << "pong:" << rank << endl;
-			MPI_Recv(&chunkobject, 1, chunktype, 0, 0, MPI_COMM_WORLD,
-			MPI_STATUSES_IGNORE);
-			cout << "inside calculate steady state, rank:" << rank << endl;
-			cout << "current rank:" << rank << " chunkobject.start"
-					<< chunkobject.start << " chunkobject.end:"
-					<< chunkobject.end << endl;
-			for (int i = chunkobject.start; i < chunkobject.end; i++) {
-				cout << "i:" << i << " danglings[i]: " << danglings[i]
-						<< " rank" << rank << " size_tmp[danglings[i]]: "
-						<< size_tmp[danglings[i]] << " iteration number: "
-						<< iteration << endl;
-				chunkobject.danglingsz += size_tmp[danglings[i]];
-			}
-			//cout << "sending from " << rank << endl;
-			MPI_Send(&chunkobject.danglingsz, 1, MPI_DOUBLE, 0, 0,
-					MPI_COMM_WORLD);
-			//cout << "sent from" << rank << endl;
-		}
-		if (rank == 0) {
-			double danglingSSS;
-			for (int prId = 1; prId < size; prId++) {
-				danglingSSS = 0.0;
-				//cout << "receiving prId:" << prId << endl;
-				MPI_Recv(&danglingSSS, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD,
-				MPI_STATUSES_IGNORE);
-				//cout << "received:" << prId << endl;
-				danglingSize += danglingSSS;
-			}
-			cout << "final summed up dangling value:" << danglingSize << endl;
-		}
-
-		// calculate sum of the size of dangling nodes.
-		/*#pragma omp parallel reduction (+:danglingSize)
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
-
-		 int start, end;
-		 findAssignedPart(&start, &end, nDanglings, nTh, myID);
-
-		 for (int i = start; i < end; i++) {
-		 cout << "i:" << i << " danglings[i]: " << danglings[i]
-		 << " rank" << rank << " size_tmp[danglings[i]]: "
-		 << size_tmp[danglings[i]] << " iteration number: "
-		 << iteration << endl;
-		 danglingSize += size_tmp[danglings[i]];
-		 }
-		 }
-
-		 cout << "final summed up dangling value:" << danglingSize << endl;*/
 		// flow via teleportation.
-
-
-
-
 #pragma omp parallel
 		{
 			int myID = omp_get_thread_num();
@@ -449,8 +413,7 @@ void Network::calculateSteadyState(int numTh) {
 			int start, end;
 			findAssignedPart(&start, &end, nNode, nTh, myID);
 
-			for (int i = start; i < end; i++)
-			{
+			for (int i = start; i < end; i++) {
 				nodes[i].setSize(
 						(alpha + beta * danglingSize)
 								* nodes[i].TeleportWeight());//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
