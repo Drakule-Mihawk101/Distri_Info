@@ -291,7 +291,7 @@ void Network::calculateSteadyState(int numTh) {
 	// initial probability distribution = 1 / N.
 
 	MPI_Request request;
-	cout << "inside calculate steady state" << endl;
+	//cout << "inside calculate steady state" << endl;
 	int size;
 	int rank;
 	int iteration = 0;
@@ -301,13 +301,12 @@ void Network::calculateSteadyState(int numTh) {
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	cout << "sizeof dangling:" << danglings.size() << endl;
+	//cout << "sizeof dangling:" << danglings.size() << endl;
 
-	for (int i = 0; i < danglings.size(); i++)
-		cout << "rank: " << rank << " danglings:" << danglings[i] << endl;
+	/*for (int i = 0; i < danglings.size(); i++)
+	 cout << "rank: " << rank << " danglings:" << danglings[i] << endl;*/
 
 	//cout << "inside calculate steady state 1" << endl;
-
 	struct data {
 		int start;
 		int end;
@@ -383,8 +382,8 @@ void Network::calculateSteadyState(int numTh) {
 			cout << "final summed up dangling value:" << danglingSize << endl;
 			//we need to send the value of danglingSize to all of the process back again so that they have the updated value
 			for (int prId = 1; prId < size; prId++) {
-				cout << "before sending from:" << prId << " value of dangling:"
-						<< danglingSize << endl;
+				/*cout << "before sending from:" << prId << " value of dangling:"
+				 << danglingSize << endl;*/
 				MPI_Send(&danglingSize, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
 			}
 		}
@@ -393,8 +392,8 @@ void Network::calculateSteadyState(int numTh) {
 			danglingSize = 0.0;
 			MPI_Recv(&danglingSize, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
 			MPI_STATUSES_IGNORE);
-			cout << "danglingSize value: " << danglingSize << " rank:" << rank
-					<< endl;
+			/*cout << "danglingSize value: " << danglingSize << " rank:" << rank
+			 << endl;*/
 		}
 
 		/*		// calculate sum of the size of dangling nodes.
@@ -418,17 +417,16 @@ void Network::calculateSteadyState(int numTh) {
 
 		// flow via teleportation.
 		// faysal: I think in the following block I do not need to call findAssignedPart again
-		//faysal: I need to send update of the node vector back to all of the process
-
-#pragma omp parallel
+		//faysal: I need to send update of the node vector back to all of the process, but I did not do that, what I did, I just made all the process to update the nodes vector
+//#pragma omp parallel
 		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
+			//int myID = omp_get_thread_num();
+			//int nTh = omp_get_num_threads();
 
-			int start, end;
-			findAssignedPart(&start, &end, nNode, nTh, myID);
+			//int start, end;
+			//findAssignedPart(&start, &end, nNode, nTh, myID);
 
-			for (int i = start; i < end; i++) {
+			for (int i = 0; i < nodes.size(); i++) {
 				nodes[i].setSize(
 						(alpha + beta * danglingSize)
 								* nodes[i].TeleportWeight());//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
@@ -442,47 +440,62 @@ void Network::calculateSteadyState(int numTh) {
 		 //size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
 		 }*/
 
-		int realNumTh = 0;
+		/*int realNumTh = 0;
 
-		// flow from network steps via following edges.
-#pragma omp parallel
-		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
+		 // flow from network steps via following edges.
+		 #pragma omp parallel
+		 {
+		 int myID = omp_get_thread_num();
+		 int nTh = omp_get_num_threads();
 
-#pragma omp master
-			{
-				realNumTh = nTh;
-			}
+		 #pragma omp master
+		 {
+		 realNumTh = nTh;
+		 }
 
-			double *myAddedSize = addedSize[myID];
-			for (int i = 0; i < nNode; i++)
-				myAddedSize[i] = 0.0;// initialize for the temporary addedSize array.
+		 //here instead of myID I am using rank
 
-			int start, end;
-			findAssignedPart(&start, &end, nNode, nTh, myID);
+		 double *myAddedSize = addedSize[rank];
+		 for (int i = 0; i < nNode; i++)
+		 myAddedSize[i] = 0.0;// initialize for the temporary addedSize array.
 
-			for (int i = start; i < end; i++) {
-				int nOutLinks = nodes[i].outLinks.size();
-				for (int j = 0; j < nOutLinks; j++) {
-					myAddedSize[nodes[i].outLinks[j].first] += beta
-							* nodes[i].outLinks[j].second * size_tmp[i];//0.85*nodes[i].outlinks[j].weight*(1/nNodes)
+		 int start, end;
+		 findAssignedPart(&start, &end, nNode, nTh, myID);
 
-				}
-			}
-		}
-		//set nodes[i].size by added addedSize[] values.
-#pragma omp parallel
-		{
-			int myID = omp_get_thread_num();
-			int nTh = omp_get_num_threads();
+		 // here instead of a part, I am putting the size of nNode here
+		 for (int i = start; i < end; i++) {
+		 int nOutLinks = nodes[i].outLinks.size();
+		 for (int j = 0; j < nOutLinks; j++) {
+		 myAddedSize[nodes[i].outLinks[j].first] += beta
+		 * nodes[i].outLinks[j].second * size_tmp[i];//0.85*nodes[i].outlinks[j].weight*(1/nNodes)
 
-			int start, end;
-			findAssignedPart(&start, &end, nNode, nTh, myID);
+		 }
+		 }
+		 }
+		 //set nodes[i].size by added addedSize[] values.
+		 #pragma omp parallel
+		 {
+		 int myID = omp_get_thread_num();
+		 int nTh = omp_get_num_threads();
 
-			for (int i = start; i < end; i++) {
-				for (int j = 0; j < realNumTh; j++)
-					nodes[i].addSize(addedSize[j][i]);
+		 int start, end;
+		 findAssignedPart(&start, &end, nNode, nTh, myID);
+
+		 for (int i = start; i < end; i++) {
+		 for (int j = 0; j < realNumTh; j++)
+		 nodes[i].addSize(addedSize[j][i]);
+		 }
+		 }
+		 */
+
+		//I am using myAddedSize array where each and every process will have its' own copy
+		//double myAddedSize = new double[nNode];
+		for (int i = 0; i < nNode; i++) {
+			//myAddedSize[i] = 0.0;	//initialize the temporary addedSize array
+			int nOutLinks = nodes[i].outLinks.size();
+			for (int j = 0; j < nOutLinks; j++) {
+				nodes[nodes[i].outLinks[j].first].addSize(
+						beta * nodes[i].outLinks[j].second * size_tmp[i]);
 			}
 		}
 
@@ -499,6 +512,8 @@ void Network::calculateSteadyState(int numTh) {
 			for (int i = start; i < end; i++)
 				sum += nodes[i].Size();
 		}
+
+		cout<<"final value of sum:"<<sum<<" iteration:"<<iteration<<endl;
 		sqdiff = 0.0;
 
 #pragma omp parallel reduction (+:sqdiff)
