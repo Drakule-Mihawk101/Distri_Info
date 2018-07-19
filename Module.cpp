@@ -157,6 +157,11 @@ void Network::findDanglingNodes() {
 //void Network::initiate() {
 void Network::initiate(int numTh) {
 
+	int size, rank;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
 	int nDangNodes = 0;
 
 	struct timeval startT, endT;
@@ -241,17 +246,47 @@ void Network::initiate(int numTh) {
 
 	// Calculate SUM of p_log_p over all nodes.
 	double allNds_log_allNds = 0.0;
+	double allNds_log_allNds_s = 0.0;
 
-#pragma omp parallel reduction (+:allNds_log_allNds)
-	{
-		int myID = omp_get_thread_num();
-		int nTh = omp_get_num_threads();
+	/*#pragma omp parallel reduction (+:allNds_log_allNds)
+	 {
+	 int myID = omp_get_thread_num();
+	 int nTh = omp_get_num_threads();
 
-		int start, end;
-		findAssignedPart(&start, &end, nNode, nTh, myID);
+	 int start, end;
+	 findAssignedPart(&start, &end, nNode, nTh, myID);
 
-		for (int i = start; i < end; i++)
-			allNds_log_allNds += pLogP(nodes[i].Size());
+	 for (int i = start; i < end; i++)
+	 allNds_log_allNds += pLogP(nodes[i].Size());
+	 }*/
+
+	int start, end;
+	findAssignedPart(&start, &end, nNode, size, rank);
+
+	for (int i = start; i < end; i++) {
+		allNds_log_allNds_s += pLogP(nodes[i].Size());
+	}
+	if (rank != 0) {
+		MPI_Send(&allNds_log_allNds_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+	}
+
+	if (rank == 0) {
+		allNds_log_allNds = allNds_log_allNds_s;
+		for (int prId = 1; prId < size; prId++) {
+			MPI_Recv(&allNds_log_allNds_s, 1, MPI_DOUBLE, prId, 0,
+			MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			allNds_log_allNds += allNds_log_allNds_s;
+		}
+		for (int prId = 1; prId < size; prId++) {
+			MPI_Send(&allNds_log_allNds, 1, MPI_DOUBLE, prId, 0,
+			MPI_COMM_WORLD);
+
+		}
+	}
+
+	if (rank != 0) {
+		MPI_Recv(&allNds_log_allNds, 1, MPI_DOUBLE, 0, 0,
+		MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 	}
 
 	allNodes_log_allNodes = allNds_log_allNds;
@@ -307,39 +342,39 @@ void Network::calculateSteadyState(int numTh) {
 	 cout << "rank: " << rank << " danglings:" << danglings[i] << endl;*/
 
 	//cout << "inside calculate steady state 1" << endl;
-	struct data {
-		int start;
-		int end;
-		double danglingsz;
-	};
+	/*struct data {
+	 int start;
+	 int end;
+	 double danglingsz;
+	 };
 
-	data chunkobject;
-	MPI_Datatype chunktype;
-	int structlen = 3;
-	int blocklengths[structlen];
-	MPI_Datatype types[structlen];
-	MPI_Aint displacements[structlen];
-	// where are the components relative to the structure?
-	blocklengths[0] = 1;
-	types[0] = MPI_INT;
-	displacements[0] = (size_t) &(chunkobject.start) - (size_t) &chunkobject;
-	blocklengths[1] = 1;
-	types[1] = MPI_INT;
-	displacements[1] = (size_t) &(chunkobject.end) - (size_t) &chunkobject;
-	blocklengths[2] = 1;
-	types[2] = MPI_DOUBLE;
-	displacements[2] = (size_t) &(chunkobject.danglingsz)
-			- (size_t) &chunkobject;
+	 data chunkobject;
+	 MPI_Datatype chunktype;
+	 int structlen = 3;
+	 int blocklengths[structlen];
+	 MPI_Datatype types[structlen];
+	 MPI_Aint displacements[structlen];
+	 // where are the components relative to the structure?
+	 blocklengths[0] = 1;
+	 types[0] = MPI_INT;
+	 displacements[0] = (size_t) &(chunkobject.start) - (size_t) &chunkobject;
+	 blocklengths[1] = 1;
+	 types[1] = MPI_INT;
+	 displacements[1] = (size_t) &(chunkobject.end) - (size_t) &chunkobject;
+	 blocklengths[2] = 1;
+	 types[2] = MPI_DOUBLE;
+	 displacements[2] = (size_t) &(chunkobject.danglingsz)
+	 - (size_t) &chunkobject;
 
-	MPI_Type_create_struct(structlen, blocklengths, displacements, types,
-			&chunktype);
-	MPI_Type_commit(&chunktype);
-	{
-		MPI_Aint typesize;
-		MPI_Type_extent(chunktype, &typesize);
-		if (rank == 0)
-			printf("Type extent: %d bytes\n", typesize);
-	}
+	 MPI_Type_create_struct(structlen, blocklengths, displacements, types,
+	 &chunktype);
+	 MPI_Type_commit(&chunktype);
+	 {
+	 MPI_Aint typesize;
+	 MPI_Type_extent(chunktype, &typesize);
+	 if (rank == 0)
+	 printf("Type extent: %d bytes\n", typesize);
+	 }*/
 
 	int iter = 0;
 	double danglingSize = 0.0;
@@ -350,9 +385,11 @@ void Network::calculateSteadyState(int numTh) {
 	int value = 0;
 	// Generate addedSize array per each thread, so that we don't need to use lock for each nodeSize addition.
 
-	double** addedSize = new double*[numTh];
-	for (int i = 0; i < numTh; i++)
-		addedSize[i] = new double[nNode];
+	/*
+	 double** addedSize = new double*[numTh];
+	 for (int i = 0; i < numTh; i++)
+	 addedSize[i] = new double[nNode];
+	 */
 
 	do {
 
@@ -571,10 +608,10 @@ void Network::calculateSteadyState(int numTh) {
 
 	} while ((iter < 200) && (sqdiff > 1.0e-15 || iter < 50));
 
-	// deallocate 2D array.
-	for (int i = 0; i < numTh; i++)
-		delete[] addedSize[i];
-	delete[] addedSize;
+	/*	// deallocate 2D array.
+	 for (int i = 0; i < numTh; i++)
+	 delete[] addedSize[i];
+	 delete[] addedSize;*/
 
 	cout << "Calculating flow done in " << iter << " iterations!" << endl;
 
@@ -584,6 +621,13 @@ void Network::calculateSteadyState(int numTh) {
 // This implementation is modified version of infomap implementation.
 void Network::calibrate(int numTh) {
 	//This is the calculation of Equation (4) in the paper.
+
+/*	struct {
+		double sum_exit_log_exit = 0.0;
+		double sum_stay_log_stay = 0.0;
+		double sumExit = 0.0;
+	};*/
+
 	double sum_exit_log_exit = 0.0;
 	double sum_stay_log_stay = 0.0;
 	double sumExit = 0.0;
@@ -604,7 +648,6 @@ void Network::calibrate(int numTh) {
 			sumExit += modules[i].ExitPr();
 		}
 	}
-
 	sumAllExitPr = sumExit;
 	double sumExit_log_sumExit = pLogP(sumExit);
 
@@ -646,7 +689,7 @@ int Network::move() {
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		// During this counting, aggregate outFlowNotToOldMod and inFlowFromOldMod values.
@@ -682,7 +725,7 @@ int Network::move() {
 					<< endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
+		double ndSize = nd.Size();		// p_nd.
 		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
@@ -871,7 +914,7 @@ int Network::prioritize_move(double vThresh) {
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
-		flowmap outFlowToMod;	// <modID, flow> for outFlow...
+		flowmap outFlowToMod;		// <modID, flow> for outFlow...
 		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
@@ -908,7 +951,7 @@ int Network::prioritize_move(double vThresh) {
 					<< endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
+		double ndSize = nd.Size();		// p_nd.
 		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
@@ -1059,11 +1102,11 @@ int Network::prioritize_move(double vThresh) {
 			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 			for (link_iterator linkIt = nd.outLinks.begin();
 					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 
 			for (link_iterator linkIt = nd.inLinks.begin();
 					linkIt != nd.inLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 		}
 	}
 
@@ -1125,7 +1168,7 @@ int Network::parallelMove(int numTh, double& tSequential) {
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -1160,8 +1203,8 @@ int Network::parallelMove(int numTh, double& tSequential) {
 					<< endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		// Below values are related current module information, but it could be changed in the middle of this decision process.
@@ -1509,7 +1552,7 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -1544,8 +1587,8 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 					<< endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		// Below values are related current module information, but it could be changed in the middle of this decision process.
@@ -1838,11 +1881,11 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 			// This can be done in parallel without any locking, since the written value is always same.
 			for (link_iterator linkIt = nd.outLinks.begin();
 					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 
 			for (link_iterator linkIt = nd.inLinks.begin();
 					linkIt != nd.inLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 		}
 
 	}	// END parallel for
@@ -1894,7 +1937,7 @@ int Network::moveSuperNodes() {
 		unsigned int nModLinks = 0;	// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -1927,8 +1970,8 @@ int Network::moveSuperNodes() {
 			cout << "ALERT: nModLinks != outFlowToMod.size()." << endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		double oldExitPr1 = modules[oldMod].ExitPr();
@@ -2125,7 +2168,7 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 		unsigned int nModLinks = 0;	// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -2158,8 +2201,8 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 			cout << "ALERT: nModLinks != outFlowToMod.size()." << endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		double oldExitPr1 = modules[oldMod].ExitPr();
@@ -2317,11 +2360,11 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 			for (link_iterator linkIt = nd.outLinks.begin();
 					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 
 			for (link_iterator linkIt = nd.inLinks.begin();
 					linkIt != nd.inLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 		}
 	}
 
@@ -2388,7 +2431,7 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 		unsigned int nModLinks = 0;	// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -2421,8 +2464,8 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 			cout << "ALERT: nModLinks != outFlowToMod.size()." << endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		double oldExitPr1 = modules[oldMod].ExitPr();
@@ -2769,7 +2812,7 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 		unsigned int nModLinks = 0;	// The number of links to/from between the current node and other modules.
 
 		flowmap outFlowToMod;	// <modID, flow> for outFlow...
-		flowmap inFlowFromMod;		// <modID, flow> for inFlow...
+		flowmap inFlowFromMod;	// <modID, flow> for inFlow...
 
 		// count other modules that are connected to the current node.
 		for (link_iterator linkIt = nd.outLinks.begin();
@@ -2802,8 +2845,8 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 			cout << "ALERT: nModLinks != outFlowToMod.size()." << endl;
 
 		// copy node specific values for easy use and efficiency.
-		double ndSize = nd.Size();					// p_nd.
-		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
+		double ndSize = nd.Size();	// p_nd.
+		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
 		double oldExitPr1 = modules[oldMod].ExitPr();
@@ -3097,11 +3140,11 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 			// This can be done in parallel without any locking, since the written value is always same.
 			for (link_iterator linkIt = nd.outLinks.begin();
 					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 
 			for (link_iterator linkIt = nd.inLinks.begin();
 					linkIt != nd.inLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+				isActives[linkIt->first] = 1;		// set as an active nodes.
 		}
 
 	}	// END parallel for
