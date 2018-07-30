@@ -87,10 +87,10 @@ SubModule::SubModule() :
  *	Module mod : module of newNetwork (network based on a module in original network.)
  */
 SubModule::SubModule(Module& mod, map<int, int>& origNodeID, int modIndex) {
-	numMembers = mod.NumMembers();
-	sumPr = mod.SumPr();
-	sumTPWeight = mod.SumTPWeight();
-	sumDangling = mod.SumDangling();
+	numMembers = mod.numMembers;
+	sumPr = mod.sumPr;
+	sumTPWeight = mod.sumTPWeight;
+	sumDangling = mod.sumDangling;
 	modIdx = modIndex;
 
 	for (vector<Node*>::iterator it = mod.members.begin();
@@ -106,11 +106,11 @@ SubModule::SubModule(Module& mod, map<int, int>& origNodeID, int modIndex) {
 }
 
 SubModule::SubModule(Module& mod) {
-	modIdx = mod.Index();
+	modIdx = mod.index;
 	numMembers = 1;
-	sumPr = mod.SumPr();
-	sumTPWeight = mod.SumTPWeight();
-	sumDangling = mod.SumDangling();
+	sumPr = mod.sumPr;
+	sumTPWeight = mod.sumTPWeight;
+	sumDangling = mod.sumDangling;
 
 	members.push_back(mod.members[0]->ID());
 }
@@ -401,10 +401,10 @@ void Network::calculateSteadyState(int numTh) {
 		findAssignedPart(&start, &end, nDanglings, size, rank);
 		// assign dangling array computation to itself rank=0 process
 		for (int i = start; i < end; i++) {
-			cout << "i:" << i << " danglings[i]: " << danglings[i] << " rank"
-					<< rank << " size_tmp[danglings[i]]: "
-					<< size_tmp[danglings[i]] << " iteration number: "
-					<< iteration << endl;
+			/*cout << "i:" << i << " danglings[i]: " << danglings[i] << " rank"
+			 << rank << " size_tmp[danglings[i]]: "
+			 << size_tmp[danglings[i]] << " iteration number: "
+			 << iteration << endl;*/
 			danglingsz += size_tmp[danglings[i]];
 		}
 		if (rank != 0) {
@@ -417,7 +417,7 @@ void Network::calculateSteadyState(int numTh) {
 				MPI_STATUSES_IGNORE);
 				danglingSize += danglingsz;
 			}
-			cout << "final summed up dangling value:" << danglingSize << endl;
+			//cout << "final summed up dangling value:" << danglingSize << endl;
 			//we need to send the value of danglingSize to all of the process back again so that they have the updated value
 			for (int prId = 1; prId < size; prId++) {
 				/*cout << "before sending from:" << prId << " value of dangling:"
@@ -579,8 +579,8 @@ void Network::calculateSteadyState(int numTh) {
 			MPI_STATUSES_IGNORE);
 		}
 
-		cout << "final value of sum:" << sum << " iteration:" << iteration
-				<< endl;
+		/*cout << "final value of sum:" << sum << " iteration:" << iteration
+		 << endl;*/
 		sqdiff = 0.0;
 
 		/*#pragma omp parallel reduction (+:sqdiff)
@@ -622,18 +622,26 @@ void Network::calculateSteadyState(int numTh) {
 void Network::calibrate(int numTh) {
 	//This is the calculation of Equation (4) in the paper.
 
-/*	struct {
-		double sum_exit_log_exit = 0.0;
-		double sum_stay_log_stay = 0.0;
-		double sumExit = 0.0;
-	};*/
+	/*	int size;
+	 int rank;
 
+	 MPI_Comm_size(MPI_COMM_WORLD, &size);
+	 MPI_Comm_rank(MPI_COMM_WORLD, &rank);*/
+
+	/*double *data = new double[3];
+	 double *data_s = new double[3];
+	 */
 	double sum_exit_log_exit = 0.0;
 	double sum_stay_log_stay = 0.0;
 	double sumExit = 0.0;
 
-	omp_set_num_threads(numTh);
+	/*
+	 double sum_exit_log_exit_s = 0.0;
+	 double sum_stay_log_stay_s = 0.0;
+	 double sumExit_s = 0.0;
+	 */
 
+	omp_set_num_threads(numTh);
 #pragma omp parallel reduction (+:sum_exit_log_exit, sum_stay_log_stay, sumExit)
 	{
 		int myID = omp_get_thread_num();
@@ -642,17 +650,97 @@ void Network::calibrate(int numTh) {
 		int start, end;
 		findAssignedPart(&start, &end, nModule, nTh, myID);
 
-		for (unsigned int i = start; i < end; i++) {
-			sum_exit_log_exit += pLogP(modules[i].ExitPr());
-			sum_stay_log_stay += pLogP(modules[i].StayPr());
-			sumExit += modules[i].ExitPr();
+		for (int i = start; i < end; i++) {
+			sum_exit_log_exit += pLogP(modules[i].exitPr);
+			sum_stay_log_stay += pLogP(modules[i].stayPr);
+			sumExit += modules[i].exitPr;
 		}
 	}
+
+	/*cout << "ping" << endl;
+	 sum_exit_log_exit = 0.0; //sum_exit_log_exit
+	 sum_stay_log_stay = 0.0;	//sum_stay_log_stay
+	 sumExit = 0.0;  //sumExit
+
+
+
+	 sum_exit_log_exit_s = 0.0; //sum_exit_log_exit_s
+	 sum_stay_log_stay_s = 0.0; //sum_stay_log_stay_s
+	 sumExit_s = 0.0; //sumExit_s
+
+
+	 int start, end;
+	 findAssignedPart(&start, &end, nModule, numTh, rank);
+
+	 for (int i = start; i < end; i++) {
+	 sum_exit_log_exit_s += pLogP(modules[i].ExitPr());
+	 sum_stay_log_stay_s += pLogP(modules[i].StayPr());
+	 sumExit_s += modules[i].ExitPr();
+	 }
+	 if (rank != 0) {
+	 MPI_Send(&sum_exit_log_exit_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+	 MPI_Send(&sum_stay_log_stay_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+	 MPI_Send(&sumExit_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+	 }
+	 cout << "pong2" << endl;
+
+	 if (rank == 0) {
+	 sum_exit_log_exit = sum_exit_log_exit_s;
+	 sum_stay_log_stay = sum_stay_log_stay_s;
+	 sumExit = sumExit_s;
+	 for (int prId = 1; prId < size; prId++) {
+	 MPI_Recv(&sum_exit_log_exit_s, 1, MPI_DOUBLE, prId, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 MPI_Recv(&sum_stay_log_stay_s, 1, MPI_DOUBLE, prId, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 MPI_Recv(&sumExit_s, 1, MPI_DOUBLE, prId, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 sum_exit_log_exit += sum_exit_log_exit_s;
+	 sum_stay_log_stay += sum_stay_log_stay_s;
+	 sumExit += sumExit_s;
+	 }
+
+	 for (int prId = 1; prId < size; prId++) {
+	 MPI_Send(&sum_exit_log_exit, 1, MPI_DOUBLE, prId, 0,
+	 MPI_COMM_WORLD);
+	 MPI_Send(&sum_stay_log_stay, 1, MPI_DOUBLE, prId, 0,
+	 MPI_COMM_WORLD);
+	 MPI_Send(&sumExit, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
+	 }
+	 }
+	 cout << "pong1" << endl;
+
+	 if (rank != 0) {
+	 MPI_Recv(&sum_exit_log_exit, 1, MPI_DOUBLE, 0, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 MPI_Recv(&sum_stay_log_stay, 1, MPI_DOUBLE, 0, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 MPI_Recv(&sumExit, 1, MPI_DOUBLE, 0, 0,
+	 MPI_COMM_WORLD,
+	 MPI_STATUSES_IGNORE);
+	 }
+
+	 cout << "pong" << endl;*/
 	sumAllExitPr = sumExit;
 	double sumExit_log_sumExit = pLogP(sumExit);
 
 	codeLength = sumExit_log_sumExit - 2.0 * sum_exit_log_exit
 			+ sum_stay_log_stay - allNodes_log_allNodes;
+
+	/*	sumAllExitPr = data[2];
+	 double sumExit_log_sumExit = pLogP(data[2]);
+	 codeLength = sumExit_log_sumExit - 2.0 * data[0] + data[1]
+	 - allNodes_log_allNodes;*/
+
+	//cout << "abcd" << endl;
+	/*	delete[] data;
+	 delete[] data_s;*/
+
 }
 
 /*
@@ -665,7 +753,7 @@ void Network::calibrate(int numTh) {
  */
 int Network::move() {
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nNode);
 	for (int i = 0; i < nNode; i++)
 		randomOrder[i] = i;
@@ -681,7 +769,7 @@ int Network::move() {
 
 	int numMoved = 0;	// the counter for the number of movements.
 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nNode; i++) {
 		Node& nd = nodes[randomOrder[i]];// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -729,10 +817,10 @@ int Network::move() {
 		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -748,9 +836,9 @@ int Network::move() {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -787,8 +875,8 @@ int Network::move() {
 
 			if (newMod != oldMod) {
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -835,7 +923,7 @@ int Network::move() {
 			// update related to newMod...
 			int newMod = bestResult.newModule;
 
-			if (modules[newMod].NumMembers() == 0) {
+			if (modules[newMod].numMembers == 0) {
 				newMod = emptyModules.back();
 				emptyModules.pop_back();
 				nEmptyMod--;
@@ -843,25 +931,25 @@ int Network::move() {
 			}
 			nd.setModIdx(newMod);
 
-			modules[newMod].increaseNumMembers();
-			modules[newMod].setExitPr(bestResult.exitPr2);
-			modules[newMod].setSumPr(bestResult.sumPr2);
-			modules[newMod].setStayPr(bestResult.exitPr2 + bestResult.sumPr2);
-			modules[newMod].addSumTPWeight(ndTPWeight);
+			modules[newMod].numMembers++;
+			modules[newMod].exitPr = bestResult.exitPr2;
+			modules[newMod].sumPr = bestResult.sumPr2;
+			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			modules[newMod].sumTPWeight += ndTPWeight;
 
 			if (nd.IsDangling()) {
-				modules[newMod].addSumDangling(ndSize);
-				modules[oldMod].minusSumDangling(ndSize);
+				modules[newMod].sumDangling += ndSize;
+				modules[oldMod].sumDangling -= ndSize;
 			}
 
 			// update related to the oldMod...
-			modules[oldMod].decreaseNumMembers();
-			modules[oldMod].setExitPr(bestResult.exitPr1);
-			modules[oldMod].setSumPr(bestResult.sumPr1);
-			modules[oldMod].setStayPr(bestResult.exitPr1 + bestResult.sumPr1);
-			modules[oldMod].minusSumTPWeight(ndTPWeight);
+			modules[oldMod].numMembers--;
+			modules[oldMod].exitPr = bestResult.exitPr1;
+			modules[oldMod].sumPr = bestResult.sumPr1;
+			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			if (modules[oldMod].NumMembers() == 0) {
+			if (modules[oldMod].numMembers == 0) {
 				nEmptyMod++;
 				nModule--;
 				emptyModules.push_back(oldMod);
@@ -888,28 +976,73 @@ int Network::move() {
  *	return: the number of movements.
  */
 int Network::prioritize_move(double vThresh) {
-	int nActive = activeNodes.size();
+
+	int size;
+	int rank;
+	int iteration = 0;
+	int nActive = 0;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	if (rank == 0) {
+		nActive = activeNodes.size();
+	}
 	int nNextActive = 0;// This is a counter for the number of active nodes on next iteration.
 
-	// Generate random sequential order of active nodes.
-	vector<int> randomOrder(nActive);
-	for (int i = 0; i < nActive; i++)
-		randomOrder[i] = activeNodes[i];
+	MPI_Bcast(&nActive, 1, MPI_INT, 0, MPI_COMM_WORLD);
+// Generate random sequential order of active nodes.
+	//int *randomGlobalArray = new int[nActive];
+	int *randomGlobalArray=new int [nActive];
+	int l = nActive / size;
+	//int *counts = new int[size];
+	//int *displs = new int[size];
+	int *counts=new int[size];
+	int *displs=new int [size];
 
-	for (int i = 0; i < nActive; i++) {
-		int target = R->randInt(nActive - 1);
-
-		// swap numbers between i and target.
-		int tmp = randomOrder[i];
-		randomOrder[i] = randomOrder[target];
-		randomOrder[target] = tmp;
+	int i;
+	for (i = 0; i < size - 1; i++) {
+		counts[i] = l;
+		displs[i] = l * i;
 	}
+	displs[size - 1] = l * i;
+	counts[size - 1] = nActive - l * i;
+
+	//int *randomLocalArray = new int[counts[rank]];
+	int *randomLocalArray=new int [counts[rank]];
+	int mynum = counts[rank];
+
+	vector<int> randomOrder(nActive);
+	for (int i = 0; i < nActive; i++) {
+		randomGlobalArray[i] = activeNodes[i];
+		//cout<<"active nodes i:"<<i<<"	"<<activeNodes[i]<<endl;
+		//randomOrder[i] = activeNodes[i];
+	}
+
+	/*int start, end;
+	 findAssignedPart(&start, &end, nActive, size, rank);
+	 */
+	MPI_Scatterv(&randomGlobalArray[0], &counts[0], &displs[0], MPI_INT,
+			&randomLocalArray[0], mynum, MPI_INT, 0, MPI_COMM_WORLD);
+
+	for (int i = 0; i < mynum; i++) {
+		int target = R->randInt(mynum - 1);
+		// swap numbers between i and target.
+		int tmp = randomLocalArray[i];
+		randomLocalArray[i] = randomLocalArray[target];
+		randomLocalArray[target] = tmp;
+	}
+
+	MPI_Allgatherv(&randomLocalArray[0], mynum, MPI_INT, &randomGlobalArray[0],
+			&counts[0], &displs[0], MPI_INT,
+			MPI_COMM_WORLD);
+
 
 	int numMoved = 0;
 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nActive; i++) {
-		Node& nd = nodes[randomOrder[i]];// look at i_th Node of the random sequential order.
+		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
@@ -955,10 +1088,10 @@ int Network::prioritize_move(double vThresh) {
 		double ndTPWeight = nd.TeleportWeight();		// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -974,9 +1107,9 @@ int Network::prioritize_move(double vThresh) {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -1012,8 +1145,8 @@ int Network::prioritize_move(double vThresh) {
 
 			if (newMod != oldMod) {
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -1061,7 +1194,7 @@ int Network::prioritize_move(double vThresh) {
 			// update related to newMod...
 			int newMod = bestResult.newModule;
 
-			if (modules[newMod].NumMembers() == 0) {
+			if (modules[newMod].numMembers == 0) {
 				newMod = emptyModules.back();
 				emptyModules.pop_back();
 				nEmptyMod--;
@@ -1069,25 +1202,25 @@ int Network::prioritize_move(double vThresh) {
 			}
 			nd.setModIdx(newMod);
 
-			modules[newMod].increaseNumMembers();
-			modules[newMod].setExitPr(bestResult.exitPr2);
-			modules[newMod].setSumPr(bestResult.sumPr2);
-			modules[newMod].setStayPr(bestResult.exitPr2 + bestResult.sumPr2);
-			modules[newMod].addSumTPWeight(ndTPWeight);
+			modules[newMod].numMembers++;
+			modules[newMod].exitPr = bestResult.exitPr2;
+			modules[newMod].sumPr = bestResult.sumPr2;
+			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			modules[newMod].sumTPWeight += ndTPWeight;
 
 			if (nd.IsDangling()) {
-				modules[newMod].addSumDangling(ndSize);
-				modules[oldMod].minusSumDangling(ndSize);
+				modules[newMod].sumDangling += ndSize;
+				modules[oldMod].sumDangling -= ndSize;
 			}
 
 			// update related to the oldMod...
-			modules[oldMod].decreaseNumMembers();
-			modules[oldMod].setExitPr(bestResult.exitPr1);
-			modules[oldMod].setSumPr(bestResult.sumPr1);
-			modules[oldMod].setStayPr(bestResult.exitPr1 + bestResult.sumPr1);
-			modules[oldMod].minusSumTPWeight(ndTPWeight);
+			modules[oldMod].numMembers--;
+			modules[oldMod].exitPr = bestResult.exitPr1;
+			modules[oldMod].sumPr = bestResult.sumPr1;
+			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			if (modules[oldMod].NumMembers() == 0) {
+			if (modules[oldMod].numMembers == 0) {
 				nEmptyMod++;
 				nModule--;
 				emptyModules.push_back(oldMod);
@@ -1123,6 +1256,10 @@ int Network::prioritize_move(double vThresh) {
 				<< endl;
 	}
 
+	delete[] randomGlobalArray;
+	delete[] randomLocalArray;
+	delete[] counts;
+	delete[] displs;
 	return numMoved;
 }
 
@@ -1136,7 +1273,7 @@ int Network::parallelMove(int numTh, double& tSequential) {
 
 	gettimeofday(&tStart, NULL);
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nNode);
 	for (int i = 0; i < nNode; i++)
 		randomOrder[i] = i;
@@ -1160,7 +1297,7 @@ int Network::parallelMove(int numTh, double& tSequential) {
 	tSequential += elapsedTimeInSec(tStart, tEnd);
 
 #pragma omp parallel for 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nNode; i++) {
 		Node& nd = nodes[randomOrder[i]];// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -1210,10 +1347,10 @@ int Network::parallelMove(int numTh, double& tSequential) {
 		// Below values are related current module information, but it could be changed in the middle of this decision process.
 		// However, we used this snapshot for finding next module of current node.
 		// These will be a guideline of decision process and the correct values will be calculated at the end of this iteration.
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -1229,9 +1366,9 @@ int Network::parallelMove(int numTh, double& tSequential) {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -1267,8 +1404,8 @@ int Network::parallelMove(int numTh, double& tSequential) {
 			if (newMod != oldMod) {
 
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -1319,12 +1456,12 @@ int Network::parallelMove(int numTh, double& tSequential) {
 
 				// if newMod == emptyTarget, it indicates moves to empty module.
 				if ((nEmptyMod > 0) && (newMod == emptyTarget)
-						&& (modules[oldMod].NumMembers() > 1)) {
+						&& (modules[oldMod].numMembers > 1)) {
 					newMod = emptyModules.back();
 					isEmptyTarget = true;
 				} else if (newMod == emptyTarget) {
 					validMove = false;
-				} else if (modules[newMod].NumMembers() == 0) {
+				} else if (modules[newMod].numMembers == 0) {
 					// This is the case that the algorithm thought there are some nodes in the new module since newMod != emptyTarget,
 					// but the nodes are all moved to other modules so there are no nodes in there. 
 					// Thus, we don't know whether generating a new module will be better or not.
@@ -1386,10 +1523,10 @@ int Network::parallelMove(int numTh, double& tSequential) {
 						}
 					}
 
-					oldExitPr1 = modules[oldMod].ExitPr();
-					oldSumPr1 = modules[oldMod].SumPr();
-					oldSumDangling1 = modules[oldMod].SumDangling();
-					oldModTPWeight = modules[oldMod].SumTPWeight();
+					oldExitPr1 = modules[oldMod].exitPr;
+					oldSumPr1 = modules[oldMod].sumPr;
+					oldSumDangling1 = modules[oldMod].sumDangling;
+					oldModTPWeight = modules[oldMod].sumTPWeight;
 
 					// For teleportation and danling nodes.
 					outFlowToOldMod += (alpha * ndSize + beta * ndDanglingSize)
@@ -1398,10 +1535,9 @@ int Network::parallelMove(int numTh, double& tSequential) {
 							+ beta * (oldSumDangling1 - ndDanglingSize))
 							* ndTPWeight;
 					outFlowToNewMod += (alpha * ndSize + beta * ndDanglingSize)
-							* modules[newMod].SumTPWeight();
-					inFlowFromNewMod += (alpha * modules[newMod].SumPr()
-							+ beta * modules[newMod].SumDangling())
-							* ndTPWeight;
+							* modules[newMod].sumTPWeight;
+					inFlowFromNewMod += (alpha * modules[newMod].sumPr
+							+ beta * modules[newMod].sumDangling) * ndTPWeight;
 
 					if (isEmptyTarget) {
 						outFlowToNewMod = 0.0;
@@ -1412,8 +1548,8 @@ int Network::parallelMove(int numTh, double& tSequential) {
 							+ outFlowToOldMod + inFlowFromOldMod;
 
 					// copy module specific values...
-					double oldExitPr2 = modules[newMod].ExitPr();
-					double oldSumPr2 = modules[newMod].SumPr();
+					double oldExitPr2 = modules[newMod].exitPr;
+					double oldSumPr2 = modules[newMod].sumPr;
 
 					// Calculate status of current investigated movement of the node nd.
 					moveResult.newModule = newMod;
@@ -1453,27 +1589,27 @@ int Network::parallelMove(int numTh, double& tSequential) {
 
 					nd.setModIdx(newMod);
 
-					modules[newMod].increaseNumMembers();
-					modules[newMod].setExitPr(moveResult.exitPr2);
-					modules[newMod].setSumPr(moveResult.sumPr2);
-					modules[newMod].setStayPr(
-							moveResult.exitPr2 + moveResult.sumPr2);
-					modules[newMod].addSumTPWeight(ndTPWeight);
+					modules[newMod].numMembers++;
+					modules[newMod].exitPr = moveResult.exitPr2;
+					modules[newMod].sumPr = moveResult.sumPr2;
+					modules[newMod].stayPr = moveResult.exitPr2
+							+ moveResult.sumPr2;
+					modules[newMod].sumTPWeight += ndTPWeight;
 
 					if (nd.IsDangling()) {
-						modules[newMod].addSumDangling(ndDanglingSize);
-						modules[oldMod].minusSumDangling(ndDanglingSize);
+						modules[newMod].sumDangling += ndDanglingSize;
+						modules[oldMod].sumDangling -= ndDanglingSize;
 					}
 
 					// update related to the oldMod...
-					modules[oldMod].decreaseNumMembers();
-					modules[oldMod].setExitPr(moveResult.exitPr1);
-					modules[oldMod].setSumPr(moveResult.sumPr1);
-					modules[oldMod].setStayPr(
-							moveResult.exitPr1 + moveResult.sumPr1);
-					modules[oldMod].minusSumTPWeight(ndTPWeight);
+					modules[oldMod].numMembers--;
+					modules[oldMod].exitPr = moveResult.exitPr1;
+					modules[oldMod].sumPr = moveResult.sumPr1;
+					modules[oldMod].stayPr = moveResult.exitPr1
+							+ moveResult.sumPr1;
+					modules[oldMod].sumTPWeight -= ndTPWeight;
 
-					if (modules[oldMod].NumMembers() == 0) {
+					if (modules[oldMod].numMembers == 0) {
 						nEmptyMod++;
 						nModule--;
 						emptyModules.push_back(oldMod);
@@ -1516,7 +1652,7 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 	int nActive = activeNodes.size();
 	int nNextActive = 0;
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nActive);
 	for (int i = 0; i < nActive; i++)
 		randomOrder[i] = activeNodes[i];
@@ -1530,8 +1666,8 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 		randomOrder[target] = tmp;
 	}
 
-	// Now randomOrder vector already had all activeNodes info,
-	// so we can reset activeNodes vector for adding for new active nodes.
+// Now randomOrder vector already had all activeNodes info,
+// so we can reset activeNodes vector for adding for new active nodes.
 	vector<int>().swap(activeNodes);
 
 	int numMoved = 0;
@@ -1544,7 +1680,7 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 	tSequential += elapsedTimeInSec(tStart, tEnd);
 
 #pragma omp parallel for 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nActive; i++) {
 		Node& nd = nodes[randomOrder[i]];// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -1594,10 +1730,10 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 		// Below values are related current module information, but it could be changed in the middle of this decision process.
 		// However, we used this snapshot for finding next module of current node.
 		// These will be a guideline of decision process and the correct values will be calculated at the end of this iteration.
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -1613,9 +1749,9 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -1651,8 +1787,8 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 			if (newMod != oldMod) {
 
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -1704,12 +1840,12 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 
 				// if newMod == emptyTarget, it indicates moves to empty module.
 				if ((nEmptyMod > 0) && (newMod == emptyTarget)
-						&& (modules[oldMod].NumMembers() > 1)) {
+						&& (modules[oldMod].numMembers > 1)) {
 					newMod = emptyModules.back();
 					isEmptyTarget = true;
 				} else if (newMod == emptyTarget) {
 					validMove = false;
-				} else if (modules[newMod].NumMembers() == 0) {
+				} else if (modules[newMod].numMembers == 0) {
 					// This is the case that the algorithm thought there are some nodes in the new module since newMod != emptyTarget,
 					// but the nodes are all moved to other modules so there are no nodes in there. 
 					// Thus, we don't know whether generating a new module will be better or not.
@@ -1771,10 +1907,10 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 						}
 					}
 
-					oldExitPr1 = modules[oldMod].ExitPr();
-					oldSumPr1 = modules[oldMod].SumPr();
-					oldSumDangling1 = modules[oldMod].SumDangling();
-					oldModTPWeight = modules[oldMod].SumTPWeight();
+					oldExitPr1 = modules[oldMod].exitPr;
+					oldSumPr1 = modules[oldMod].sumPr;
+					oldSumDangling1 = modules[oldMod].sumDangling;
+					oldModTPWeight = modules[oldMod].sumTPWeight;
 
 					// For teleportation and danling nodes.
 					outFlowToOldMod += (alpha * ndSize + beta * ndDanglingSize)
@@ -1783,10 +1919,9 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 							+ beta * (oldSumDangling1 - ndDanglingSize))
 							* ndTPWeight;
 					outFlowToNewMod += (alpha * ndSize + beta * ndDanglingSize)
-							* modules[newMod].SumTPWeight();
-					inFlowFromNewMod += (alpha * modules[newMod].SumPr()
-							+ beta * modules[newMod].SumDangling())
-							* ndTPWeight;
+							* modules[newMod].sumTPWeight;
+					inFlowFromNewMod += (alpha * modules[newMod].sumPr
+							+ beta * modules[newMod].sumDangling) * ndTPWeight;
 
 					if (isEmptyTarget) {
 						outFlowToNewMod = 0.0;
@@ -1797,8 +1932,8 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 							+ outFlowToOldMod + inFlowFromOldMod;
 
 					// copy module specific values...
-					double oldExitPr2 = modules[newMod].ExitPr();
-					double oldSumPr2 = modules[newMod].SumPr();
+					double oldExitPr2 = modules[newMod].exitPr;
+					double oldSumPr2 = modules[newMod].sumPr;
 
 					// Calculate status of current investigated movement of the node nd.
 					moveResult.newModule = newMod;
@@ -1839,27 +1974,27 @@ int Network::prioritize_parallelMove(int numTh, double& tSequential,
 
 					nd.setModIdx(newMod);
 
-					modules[newMod].increaseNumMembers();
-					modules[newMod].setExitPr(moveResult.exitPr2);
-					modules[newMod].setSumPr(moveResult.sumPr2);
-					modules[newMod].setStayPr(
-							moveResult.exitPr2 + moveResult.sumPr2);
-					modules[newMod].addSumTPWeight(ndTPWeight);
+					modules[newMod].numMembers++;
+					modules[newMod].exitPr = moveResult.exitPr2;
+					modules[newMod].sumPr = moveResult.sumPr2;
+					modules[newMod].stayPr = moveResult.exitPr2
+							+ moveResult.sumPr2;
+					modules[newMod].sumTPWeight += ndTPWeight;
 
 					if (nd.IsDangling()) {
-						modules[newMod].addSumDangling(ndDanglingSize);
-						modules[oldMod].minusSumDangling(ndDanglingSize);
+						modules[newMod].sumDangling += ndDanglingSize;
+						modules[oldMod].sumDangling -= ndDanglingSize;
 					}
 
 					// update related to the oldMod...
-					modules[oldMod].decreaseNumMembers();
-					modules[oldMod].setExitPr(moveResult.exitPr1);
-					modules[oldMod].setSumPr(moveResult.sumPr1);
-					modules[oldMod].setStayPr(
-							moveResult.exitPr1 + moveResult.sumPr1);
-					modules[oldMod].minusSumTPWeight(ndTPWeight);
+					modules[oldMod].numMembers--;
+					modules[oldMod].exitPr = moveResult.exitPr1;
+					modules[oldMod].sumPr = moveResult.sumPr1;
+					modules[oldMod].stayPr = moveResult.exitPr1
+							+ moveResult.sumPr1;
+					modules[oldMod].sumTPWeight -= ndTPWeight;
 
-					if (modules[oldMod].NumMembers() == 0) {
+					if (modules[oldMod].numMembers == 0) {
 						nEmptyMod++;
 						nModule--;
 						emptyModules.push_back(oldMod);
@@ -1913,7 +2048,7 @@ int Network::moveSuperNodes() {
 
 	int nSuperNodes = superNodes.size();
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nSuperNodes);
 	for (int i = 0; i < nSuperNodes; i++)
 		randomOrder[i] = i;
@@ -1929,7 +2064,7 @@ int Network::moveSuperNodes() {
 
 	int numMoved = 0;
 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nSuperNodes; i++) {
 		SuperNode& nd = superNodes[randomOrder[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -1974,10 +2109,10 @@ int Network::moveSuperNodes() {
 		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -1993,9 +2128,9 @@ int Network::moveSuperNodes() {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -2033,8 +2168,8 @@ int Network::moveSuperNodes() {
 
 			if (newMod != oldMod) {
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -2082,7 +2217,7 @@ int Network::moveSuperNodes() {
 			int newMod = bestResult.newModule;
 			int spMembers = nd.members.size();
 
-			if (modules[newMod].NumMembers() == 0) {
+			if (modules[newMod].numMembers == 0) {
 				newMod = emptyModules.back();
 				emptyModules.pop_back();
 				nEmptyMod--;
@@ -2095,26 +2230,26 @@ int Network::moveSuperNodes() {
 				nd.members[j]->setModIdx(newMod);
 			}
 
-			modules[newMod].increaseNumMembers(spMembers);
-			modules[newMod].setExitPr(bestResult.exitPr2);
-			modules[newMod].setSumPr(bestResult.sumPr2);
-			modules[newMod].setStayPr(bestResult.exitPr2 + bestResult.sumPr2);
-			modules[newMod].addSumTPWeight(ndTPWeight);
+			modules[newMod].numMembers += spMembers;
+			modules[newMod].exitPr = bestResult.exitPr2;
+			modules[newMod].sumPr = bestResult.sumPr2;
+			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			modules[newMod].sumTPWeight += ndTPWeight;
 
 			double spDanglingSize = nd.DanglingSize();
 			if (spDanglingSize > 0.0) {
-				modules[newMod].addSumDangling(spDanglingSize);
-				modules[oldMod].minusSumDangling(spDanglingSize);
+				modules[newMod].sumDangling += spDanglingSize;
+				modules[oldMod].sumDangling -= spDanglingSize;
 			}
 
 			// update related to the oldMod...
-			modules[oldMod].decreaseNumMembers(spMembers);
-			modules[oldMod].setExitPr(bestResult.exitPr1);
-			modules[oldMod].setSumPr(bestResult.sumPr1);
-			modules[oldMod].setStayPr(bestResult.exitPr1 + bestResult.sumPr1);
-			modules[oldMod].minusSumTPWeight(ndTPWeight);
+			modules[oldMod].numMembers -= spMembers;
+			modules[oldMod].exitPr = bestResult.exitPr1;
+			modules[oldMod].sumPr = bestResult.sumPr1;
+			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			if (modules[oldMod].NumMembers() == 0) {
+			if (modules[oldMod].numMembers == 0) {
 				nEmptyMod++;
 				nModule--;
 				emptyModules.push_back(oldMod);
@@ -2127,7 +2262,7 @@ int Network::moveSuperNodes() {
 		}
 	}
 
-	// the following should be true: modules.size() == nModule.
+// the following should be true: modules.size() == nModule.
 	if (nodes.size() != nModule + nEmptyMod) {
 		cout << "Something wrong!! nodes.size() != nModule + nEmptyMod."
 				<< endl;
@@ -2144,7 +2279,7 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 	int nActive = activeNodes.size();
 	int nNextActive = 0;
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nActive);
 	for (int i = 0; i < nActive; i++)
 		randomOrder[i] = activeNodes[i];
@@ -2160,7 +2295,7 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 
 	int numMoved = 0;
 
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nActive; i++) {
 		SuperNode& nd = superNodes[randomOrder[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -2205,10 +2340,10 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -2224,9 +2359,9 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -2263,8 +2398,8 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 
 			if (newMod != oldMod) {
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -2313,7 +2448,7 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 			int newMod = bestResult.newModule;
 			int spMembers = nd.members.size();
 
-			if (modules[newMod].NumMembers() == 0) {
+			if (modules[newMod].numMembers == 0) {
 				newMod = emptyModules.back();
 				emptyModules.pop_back();
 				nEmptyMod--;
@@ -2326,26 +2461,26 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 				nd.members[j]->setModIdx(newMod);
 			}
 
-			modules[newMod].increaseNumMembers(spMembers);
-			modules[newMod].setExitPr(bestResult.exitPr2);
-			modules[newMod].setSumPr(bestResult.sumPr2);
-			modules[newMod].setStayPr(bestResult.exitPr2 + bestResult.sumPr2);
-			modules[newMod].addSumTPWeight(ndTPWeight);
+			modules[newMod].numMembers += spMembers;
+			modules[newMod].exitPr = bestResult.exitPr2;
+			modules[newMod].sumPr = bestResult.sumPr2;
+			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			modules[newMod].sumTPWeight += ndTPWeight;
 
 			double spDanglingSize = nd.DanglingSize();
 			if (spDanglingSize > 0.0) {
-				modules[newMod].addSumDangling(spDanglingSize);
-				modules[oldMod].minusSumDangling(spDanglingSize);
+				modules[newMod].sumDangling += spDanglingSize;
+				modules[oldMod].sumDangling -= spDanglingSize;
 			}
 
 			// update related to the oldMod...
-			modules[oldMod].decreaseNumMembers(spMembers);
-			modules[oldMod].setExitPr(bestResult.exitPr1);
-			modules[oldMod].setSumPr(bestResult.sumPr1);
-			modules[oldMod].setStayPr(bestResult.exitPr1 + bestResult.sumPr1);
-			modules[oldMod].minusSumTPWeight(ndTPWeight);
+			modules[oldMod].numMembers -= spMembers;
+			modules[oldMod].exitPr = bestResult.exitPr1;
+			modules[oldMod].sumPr = bestResult.sumPr1;
+			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			if (modules[oldMod].NumMembers() == 0) {
+			if (modules[oldMod].numMembers == 0) {
 				nEmptyMod++;
 				nModule--;
 				emptyModules.push_back(oldMod);
@@ -2376,7 +2511,7 @@ int Network::prioritize_moveSPnodes(double vThresh) {
 		}
 	}
 
-	// the following should be true: modules.size() == nModule.
+// the following should be true: modules.size() == nModule.
 	if (nodes.size() != nModule + nEmptyMod) {
 		cout << "Something wrong!! nodes.size() != nModule + nEmptyMod."
 				<< endl;
@@ -2398,7 +2533,7 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 
 	int nSuperNodes = superNodes.size();
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nSuperNodes);
 	for (int i = 0; i < nSuperNodes; i++)
 		randomOrder[i] = i;
@@ -2423,7 +2558,7 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 	tSequential += elapsedTimeInSec(tStart, tEnd);
 
 #pragma omp parallel for
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nSuperNodes; i++) {
 		SuperNode& nd = superNodes[randomOrder[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -2468,10 +2603,10 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -2487,9 +2622,9 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -2502,7 +2637,7 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 		}
 
 		//////////////////// TODO: NEED TO IMPLEMENT THE OPTION TO MOVE TO EMPTY MODULE ////////////////
-		if (modules[oldMod].SumPr() > ndSize && emptyModules.size() > 0) {
+		if (modules[oldMod].sumPr > ndSize && emptyModules.size() > 0) {
 			outFlowToMod[emptyTarget] = 0.0;
 			inFlowFromMod[emptyTarget] = 0.0;
 			nModLinks++;
@@ -2525,8 +2660,8 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 			if (newMod != oldMod) {
 
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -2578,12 +2713,12 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 
 				// if newMod == emptyTarget, it indicates moves to empty module.
 				if ((nEmptyMod > 0) && (newMod == emptyTarget)
-						&& (modules[oldMod].NumMembers() > 1)) {
+						&& (modules[oldMod].numMembers > 1)) {
 					newMod = emptyModules.back();
 					isEmptyTarget = true;
 				} else if (newMod == emptyTarget) {
 					validMove = false;
-				} else if (modules[newMod].NumMembers() == 0) {
+				} else if (modules[newMod].numMembers == 0) {
 					// This is the case that the algorithm thought there are some nodes in the new module since newMod != emptyTarget,
 					// but the nodes are all moved to other modules so there are no nodes in there. 
 					// Thus, we don't know whether generating a new module will be better or not.
@@ -2645,10 +2780,10 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 						}
 					}
 
-					oldExitPr1 = modules[oldMod].ExitPr();
-					oldSumPr1 = modules[oldMod].SumPr();
-					oldSumDangling1 = modules[oldMod].SumDangling();
-					oldModTPWeight = modules[oldMod].SumTPWeight();
+					oldExitPr1 = modules[oldMod].exitPr;
+					oldSumPr1 = modules[oldMod].sumPr;
+					oldSumDangling1 = modules[oldMod].sumDangling;
+					oldModTPWeight = modules[oldMod].sumTPWeight;
 
 					// For teleportation and danling nodes.
 					outFlowToOldMod += (alpha * ndSize + beta * ndDanglingSize)
@@ -2657,10 +2792,9 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 							+ beta * (oldSumDangling1 - ndDanglingSize))
 							* ndTPWeight;
 					outFlowToNewMod += (alpha * ndSize + beta * ndDanglingSize)
-							* modules[newMod].SumTPWeight();
-					inFlowFromNewMod += (alpha * modules[newMod].SumPr()
-							+ beta * modules[newMod].SumDangling())
-							* ndTPWeight;
+							* modules[newMod].sumTPWeight;
+					inFlowFromNewMod += (alpha * modules[newMod].sumPr
+							+ beta * modules[newMod].sumDangling) * ndTPWeight;
 
 					if (isEmptyTarget) {
 						outFlowToNewMod = 0.0;
@@ -2671,8 +2805,8 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 							+ outFlowToOldMod + inFlowFromOldMod;
 
 					// copy module specific values...
-					double oldExitPr2 = modules[newMod].ExitPr();
-					double oldSumPr2 = modules[newMod].SumPr();
+					double oldExitPr2 = modules[newMod].exitPr;
+					double oldSumPr2 = modules[newMod].sumPr;
 
 					// Calculate status of current investigated movement of the node nd.
 					moveResult.newModule = newMod;
@@ -2716,27 +2850,27 @@ int Network::parallelMoveSuperNodes(int numTh, double& tSequential) {
 						nd.members[k]->setModIdx(newMod);
 					}
 
-					modules[newMod].increaseNumMembers(spMembers);
-					modules[newMod].setExitPr(moveResult.exitPr2);
-					modules[newMod].setSumPr(moveResult.sumPr2);
-					modules[newMod].setStayPr(
-							moveResult.exitPr2 + moveResult.sumPr2);
-					modules[newMod].addSumTPWeight(ndTPWeight);
+					modules[newMod].numMembers += spMembers;
+					modules[newMod].exitPr = moveResult.exitPr2;
+					modules[newMod].sumPr = moveResult.sumPr2;
+					modules[newMod].stayPr = moveResult.exitPr2
+							+ moveResult.sumPr2;
+					modules[newMod].sumTPWeight += ndTPWeight;
 
 					if (ndDanglingSize > 0.0) {
-						modules[newMod].addSumDangling(ndDanglingSize);
-						modules[oldMod].minusSumDangling(ndDanglingSize);
+						modules[newMod].sumDangling += ndDanglingSize;
+						modules[oldMod].sumDangling -= ndDanglingSize;
 					}
 
 					// update related to the oldMod...
-					modules[oldMod].decreaseNumMembers(spMembers);
-					modules[oldMod].setExitPr(moveResult.exitPr1);
-					modules[oldMod].setSumPr(moveResult.sumPr1);
-					modules[oldMod].setStayPr(
-							moveResult.exitPr1 + moveResult.sumPr1);
-					modules[oldMod].minusSumTPWeight(ndTPWeight);
+					modules[oldMod].numMembers -= spMembers;
+					modules[oldMod].exitPr = moveResult.exitPr1;
+					modules[oldMod].sumPr = moveResult.sumPr1;
+					modules[oldMod].stayPr = moveResult.exitPr1
+							+ moveResult.sumPr1;
+					modules[oldMod].sumTPWeight -= ndTPWeight;
 
-					if (modules[oldMod].NumMembers() == 0) {
+					if (modules[oldMod].numMembers == 0) {
 						nEmptyMod++;
 						nModule--;
 						emptyModules.push_back(oldMod);
@@ -2775,7 +2909,7 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 	int nActive = activeNodes.size();
 	int nNextActive = 0;
 
-	// Generate random sequential order of nodes.
+// Generate random sequential order of nodes.
 	vector<int> randomOrder(nActive);
 	for (int i = 0; i < nActive; i++)
 		randomOrder[i] = activeNodes[i];
@@ -2789,8 +2923,8 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 		randomOrder[target] = tmp;
 	}
 
-	// Now randomOrder vector already had all activeNodes info,
-	// so we can reset activeNodes vector for adding for new active nodes.
+// Now randomOrder vector already had all activeNodes info,
+// so we can reset activeNodes vector for adding for new active nodes.
 	vector<int>().swap(activeNodes);
 
 	int numMoved = 0;
@@ -2804,7 +2938,7 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 	tSequential += elapsedTimeInSec(tStart, tEnd);
 
 #pragma omp parallel for
-	// Move each node to one of its neighbor modules in random sequential order.
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = 0; i < nActive; i++) {
 		SuperNode& nd = superNodes[randomOrder[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -2849,10 +2983,10 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 		double ndTPWeight = nd.TeleportWeight();	// tau_nd.
 		double ndDanglingSize = nd.DanglingSize();
 
-		double oldExitPr1 = modules[oldMod].ExitPr();
-		double oldSumPr1 = modules[oldMod].SumPr();
-		double oldSumDangling1 = modules[oldMod].SumDangling();
-		double oldModTPWeight = modules[oldMod].SumTPWeight();
+		double oldExitPr1 = modules[oldMod].exitPr;
+		double oldSumPr1 = modules[oldMod].sumPr;
+		double oldSumDangling1 = modules[oldMod].sumDangling;
+		double oldModTPWeight = modules[oldMod].sumTPWeight;
 
 		double additionalTeleportOutFlow = (alpha * ndSize
 				+ beta * ndDanglingSize) * (oldModTPWeight - ndTPWeight);
@@ -2868,9 +3002,9 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 				inFlowFromMod[newMod] += additionalTeleportInFlow;
 			} else {
 				outFlowToMod[newMod] += (alpha * ndSize + beta * ndDanglingSize)
-						* modules[newMod].SumTPWeight();
-				inFlowFromMod[newMod] += (alpha * modules[newMod].SumPr()
-						+ beta * modules[newMod].SumDangling()) * ndTPWeight;
+						* modules[newMod].sumTPWeight;
+				inFlowFromMod[newMod] += (alpha * modules[newMod].sumPr
+						+ beta * modules[newMod].sumDangling) * ndTPWeight;
 			}
 		}
 
@@ -2883,7 +3017,7 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 		}
 
 		//////////////////// TODO: NEED TO IMPLEMENT THE OPTION TO MOVE TO EMPTY MODULE ////////////////
-		if (modules[oldMod].SumPr() > ndSize && emptyModules.size() > 0) {
+		if (modules[oldMod].sumPr > ndSize && emptyModules.size() > 0) {
 			outFlowToMod[emptyTarget] = 0.0;
 			inFlowFromMod[emptyTarget] = 0.0;
 			nModLinks++;
@@ -2906,8 +3040,8 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 			if (newMod != oldMod) {
 
 				// copy module specific values...
-				double oldExitPr2 = modules[newMod].ExitPr();
-				double oldSumPr2 = modules[newMod].SumPr();
+				double oldExitPr2 = modules[newMod].exitPr;
+				double oldSumPr2 = modules[newMod].sumPr;
 
 				// Calculate status of current investigated movement of the node nd.
 				currentResult.newModule = newMod;
@@ -2960,12 +3094,12 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 
 				// if newMod == emptyTarget, it indicates moves to empty module.
 				if ((nEmptyMod > 0) && (newMod == emptyTarget)
-						&& (modules[oldMod].NumMembers() > 1)) {
+						&& (modules[oldMod].numMembers > 1)) {
 					newMod = emptyModules.back();
 					isEmptyTarget = true;
 				} else if (newMod == emptyTarget) {
 					validMove = false;
-				} else if (modules[newMod].NumMembers() == 0) {
+				} else if (modules[newMod].numMembers == 0) {
 					// This is the case that the algorithm thought there are some nodes in the new module since newMod != emptyTarget,
 					// but the nodes are all moved to other modules so there are no nodes in there. 
 					// Thus, we don't know whether generating a new module will be better or not.
@@ -3027,10 +3161,10 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 						}
 					}
 
-					oldExitPr1 = modules[oldMod].ExitPr();
-					oldSumPr1 = modules[oldMod].SumPr();
-					oldSumDangling1 = modules[oldMod].SumDangling();
-					oldModTPWeight = modules[oldMod].SumTPWeight();
+					oldExitPr1 = modules[oldMod].exitPr;
+					oldSumPr1 = modules[oldMod].sumPr;
+					oldSumDangling1 = modules[oldMod].sumDangling;
+					oldModTPWeight = modules[oldMod].sumTPWeight;
 
 					// For teleportation and danling nodes.
 					outFlowToOldMod += (alpha * ndSize + beta * ndDanglingSize)
@@ -3039,10 +3173,9 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 							+ beta * (oldSumDangling1 - ndDanglingSize))
 							* ndTPWeight;
 					outFlowToNewMod += (alpha * ndSize + beta * ndDanglingSize)
-							* modules[newMod].SumTPWeight();
-					inFlowFromNewMod += (alpha * modules[newMod].SumPr()
-							+ beta * modules[newMod].SumDangling())
-							* ndTPWeight;
+							* modules[newMod].sumTPWeight;
+					inFlowFromNewMod += (alpha * modules[newMod].sumPr
+							+ beta * modules[newMod].sumDangling) * ndTPWeight;
 
 					if (isEmptyTarget) {
 						outFlowToNewMod = 0.0;
@@ -3053,8 +3186,8 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 							+ outFlowToOldMod + inFlowFromOldMod;
 
 					// copy module specific values...
-					double oldExitPr2 = modules[newMod].ExitPr();
-					double oldSumPr2 = modules[newMod].SumPr();
+					double oldExitPr2 = modules[newMod].exitPr;
+					double oldSumPr2 = modules[newMod].sumPr;
 
 					// Calculate status of current investigated movement of the node nd.
 					moveResult.newModule = newMod;
@@ -3098,27 +3231,27 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 						nd.members[k]->setModIdx(newMod);
 					}
 
-					modules[newMod].increaseNumMembers(spMembers);
-					modules[newMod].setExitPr(moveResult.exitPr2);
-					modules[newMod].setSumPr(moveResult.sumPr2);
-					modules[newMod].setStayPr(
-							moveResult.exitPr2 + moveResult.sumPr2);
-					modules[newMod].addSumTPWeight(ndTPWeight);
+					modules[newMod].numMembers += spMembers;
+					modules[newMod].exitPr = moveResult.exitPr2;
+					modules[newMod].sumPr = moveResult.sumPr2;
+					modules[newMod].stayPr = moveResult.exitPr2
+							+ moveResult.sumPr2;
+					modules[newMod].sumTPWeight += ndTPWeight;
 
 					if (ndDanglingSize > 0.0) {
-						modules[newMod].addSumDangling(ndDanglingSize);
-						modules[oldMod].minusSumDangling(ndDanglingSize);
+						modules[newMod].sumDangling += ndDanglingSize;
+						modules[oldMod].sumDangling -= ndDanglingSize;
 					}
 
 					// update related to the oldMod...
-					modules[oldMod].decreaseNumMembers(spMembers);
-					modules[oldMod].setExitPr(moveResult.exitPr1);
-					modules[oldMod].setSumPr(moveResult.sumPr1);
-					modules[oldMod].setStayPr(
-							moveResult.exitPr1 + moveResult.sumPr1);
-					modules[oldMod].minusSumTPWeight(ndTPWeight);
+					modules[oldMod].numMembers -= spMembers;
+					modules[oldMod].exitPr = moveResult.exitPr1;
+					modules[oldMod].sumPr = moveResult.sumPr1;
+					modules[oldMod].stayPr = moveResult.exitPr1
+							+ moveResult.sumPr1;
+					modules[oldMod].sumTPWeight -= ndTPWeight;
 
-					if (modules[oldMod].NumMembers() == 0) {
+					if (modules[oldMod].numMembers == 0) {
 						nEmptyMod++;
 						nModule--;
 						emptyModules.push_back(oldMod);
@@ -3164,8 +3297,8 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
  */
 void Network::updateMembersInModule() {
 	int numModules = modules.size();
-	//vector<int>().swap(activeModules);
-	//activeModules.reserve(nModule);
+//vector<int>().swap(activeModules);
+//activeModules.reserve(nModule);
 	vector<int>().swap(smActiveMods);
 	smActiveMods.reserve(nModule);
 	vector<int>().swap(lgActiveMods);
@@ -3175,9 +3308,9 @@ void Network::updateMembersInModule() {
 		vector<Node*>().swap(modules[i].members);
 		//if(modules[i].NumMembers() > 0)
 		//	activeModules.push_back(i);
-		if (modules[i].NumMembers() > 10000)
+		if (modules[i].numMembers > 10000)
 			lgActiveMods.push_back(i);
-		else if (modules[i].NumMembers() > 0)
+		else if (modules[i].numMembers > 0)
 			smActiveMods.push_back(i);
 	}
 
@@ -3199,7 +3332,7 @@ void Network::updateSPMembersInModule() {
 // calculate exit-probability based on node information and current module assignment.
 void Network::updateCodeLength(int numTh, bool isSPNode) {
 
-	// calculate exit-probability for each module.
+// calculate exit-probability for each module.
 	double tempSumAllExit = 0.0;
 	double exit_log_exit = 0.0;
 	double stay_log_stay = 0.0;
@@ -3208,11 +3341,11 @@ void Network::updateCodeLength(int numTh, bool isSPNode) {
 
 #pragma omp parallel for reduction (+:tempSumAllExit, exit_log_exit, stay_log_stay)
 	for (unsigned int i = 0; i < nNode; i++) {
-		if (modules[i].NumMembers() > 0) {
+		if (modules[i].numMembers > 0) {
 			// exitPr w.r.t. teleportation.
-			double exitPr = Network::alpha * (1.0 - modules[i].SumTPWeight())
-					* modules[i].SumPr();
-			int curMod = modules[i].Index();
+			double exitPr = Network::alpha * (1.0 - modules[i].sumTPWeight)
+					* modules[i].sumPr;
+			int curMod = modules[i].index;
 
 			double sumOutFlow = 0.0;
 			int nMembers = modules[i].members.size();
@@ -3233,15 +3366,15 @@ void Network::updateCodeLength(int numTh, bool isSPNode) {
 
 			exitPr += Network::beta
 					* (sumOutFlow
-							+ (1.0 - modules[i].SumTPWeight())
-									* modules[i].SumDangling());
+							+ (1.0 - modules[i].sumTPWeight)
+									* modules[i].sumDangling);
 
-			modules[i].setExitPr(exitPr);
-			modules[i].setStayPr(exitPr + modules[i].SumPr());
+			modules[i].exitPr = exitPr;
+			modules[i].stayPr = exitPr + modules[i].sumPr;
 
 			tempSumAllExit += exitPr;
 			exit_log_exit += pLogP(exitPr);
-			stay_log_stay += pLogP(modules[i].StayPr());
+			stay_log_stay += pLogP(modules[i].stayPr);
 		}
 	}
 
@@ -3254,18 +3387,18 @@ void Network::updateCodeLength(int numTh, bool isSPNode) {
 // calculate exit-probability based on node information and current module assignment.
 double Network::calculateCodeLength() {
 
-	// calculate exit-probability for each module.
+// calculate exit-probability for each module.
 	double tempSumAllExit = 0.0;
 	double exit_log_exit = 0.0;
 	double stay_log_stay = 0.0;
 
 #pragma omp parallel for reduction (+:tempSumAllExit, exit_log_exit, stay_log_stay)
 	for (unsigned int i = 0; i < nNode; i++) {
-		if (modules[i].NumMembers() > 0) {
+		if (modules[i].numMembers > 0) {
 			// exitPr w.r.t. teleportation.
-			double exitPr = Network::alpha * (1.0 - modules[i].SumTPWeight())
-					* modules[i].SumPr();
-			int curMod = modules[i].Index();
+			double exitPr = Network::alpha * (1.0 - modules[i].sumTPWeight)
+					* modules[i].sumPr;
+			int curMod = modules[i].index;
 
 			double sumOutFlow = 0.0;
 			int nMembers = modules[i].members.size();
@@ -3280,12 +3413,12 @@ double Network::calculateCodeLength() {
 
 			exitPr += Network::beta
 					* (sumOutFlow
-							+ (1.0 - modules[i].SumTPWeight())
-									* modules[i].SumDangling());
+							+ (1.0 - modules[i].sumTPWeight)
+									* modules[i].sumDangling);
 
 			tempSumAllExit += exitPr;
 			exit_log_exit += pLogP(exitPr);
-			stay_log_stay += pLogP(exitPr + modules[i].SumPr());
+			stay_log_stay += pLogP(exitPr + modules[i].sumPr);
 		}
 	}
 
@@ -3299,7 +3432,7 @@ double Network::calculateCodeLength() {
 // make a group of nodes as a Node (here, SuperNode)
 // Granularity of the network is same but a group of nodes move together instead of moving individually.
 void Network::convertModulesToSuperNodes(int numTh) {
-	//initialize superNodes vector for updating w.r.t. the current module status.
+//initialize superNodes vector for updating w.r.t. the current module status.
 	vector<SuperNode>().swap(superNodes);
 	superNodes.reserve(nModule);
 
@@ -3307,7 +3440,7 @@ void Network::convertModulesToSuperNodes(int numTh) {
 
 	int idx = 0;
 	for (unsigned int i = 0; i < nNode; i++) {
-		if (modules[i].NumMembers() > 0) {
+		if (modules[i].numMembers > 0) {
 			superNodes.push_back(SuperNode(modules[i], idx));
 			modToSPNode[i] = idx;
 			idx++;
@@ -3364,7 +3497,7 @@ void Network::convertModulesToSuperNodes(int numTh) {
 		}
 	}
 
-	// update inLinks in SEQUENTIAL..
+// update inLinks in SEQUENTIAL..
 	for (int i = 0; i < numSPNode; i++) {
 		int nOutLinks = superNodes[i].outLinks.size();
 		for (int j = 0; j < nOutLinks; j++)
@@ -3376,7 +3509,7 @@ void Network::convertModulesToSuperNodes(int numTh) {
 
 //void Network::generateSuperNodesFromSubModules() {
 void Network::generateSuperNodesFromSubModules(int numTh) {
-	//initialize superNodes vector for updating w.r.t. the current module status.
+//initialize superNodes vector for updating w.r.t. the current module status.
 	vector<SuperNode>().swap(superNodes);
 
 	int nSubMods = subModules.size();
@@ -3446,7 +3579,7 @@ void Network::generateSuperNodesFromSubModules(int numTh) {
 
 	}
 
-	// update inLinks in SEQUENTIAL..
+// update inLinks in SEQUENTIAL..
 	for (int i = 0; i < numSPNode; i++) {
 		int nOutLinks = superNodes[i].outLinks.size();
 		for (int j = 0; j < nOutLinks; j++)
@@ -3456,13 +3589,13 @@ void Network::generateSuperNodesFromSubModules(int numTh) {
 }
 
 void Network::copyModule(Module * newM, Module * oldM) {
-	newM->setIndex(oldM->Index());
-	newM->setExitPr(oldM->ExitPr());
-	newM->setStayPr(oldM->StayPr());
-	newM->setSumPr(oldM->SumPr());
-	newM->setSumTPWeight(oldM->SumTPWeight());
-	newM->setSumDangling(oldM->SumDangling());
-	newM->setNumMembers(oldM->NumMembers());
+	newM->index = oldM->index;
+	newM->exitPr = oldM->exitPr;
+	newM->stayPr = oldM->stayPr;
+	newM->sumPr = oldM->sumPr;
+	newM->sumTPWeight = oldM->sumTPWeight;
+	newM->sumDangling = oldM->sumDangling;
+	newM->numMembers = oldM->numMembers;
 
 	newM->members.clear();
 	int nMembers = oldM->members.size();
@@ -3471,13 +3604,13 @@ void Network::copyModule(Module * newM, Module * oldM) {
 }
 
 void Network::copyModule(int newM, int oldM) {
-	modules[newM].setIndex(modules[oldM].Index());
-	modules[newM].setExitPr(modules[oldM].ExitPr());
-	modules[newM].setStayPr(modules[oldM].StayPr());
-	modules[newM].setSumPr(modules[oldM].SumPr());
-	modules[newM].setSumTPWeight(modules[oldM].SumTPWeight());
-	modules[newM].setSumDangling(modules[oldM].SumDangling());
-	modules[newM].setNumMembers(modules[oldM].NumMembers());
+	modules[newM].index = modules[oldM].index;
+	modules[newM].exitPr = modules[oldM].exitPr;
+	modules[newM].stayPr = modules[oldM].stayPr;
+	modules[newM].sumPr = modules[oldM].sumPr;
+	modules[newM].sumTPWeight = modules[oldM].sumTPWeight;
+	modules[newM].sumDangling = modules[oldM].sumDangling;
+	modules[newM].numMembers = modules[oldM].numMembers;
 
 	modules[newM].members.clear();
 	int nMembers = modules[oldM].members.size();

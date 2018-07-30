@@ -29,15 +29,18 @@ using namespace std;
 
 
 struct Module {
+
+public:
+
 	int index;			// Index number of this module.
-	double exitPr;		// exit probability of this module.
+	double exitPr=0.0;		// exit probability of this module.
 	double stayPr;		// stay probability of this module, which is sum of p_alpha + exit probability.
 	double sumPr;		// sum of p_alpha.  alpha is in this module i.
 	double sumTPWeight;	// sum of teleport weight.   SUM (tau_a).
 	double sumDangling;	// sum of dangling nodes weight.
 	int numMembers;		// number of members of this Module.
 
-  public:
+
 	vector<Node *> members;	// member nodes in this module.
 
 	// Constructors and member functions
@@ -46,7 +49,7 @@ struct Module {
 	Module(int idx, Node * nd);	// used for Node to Module transformation.
 
 	// Getter -- Setter
-	int Index() { return index; }
+	/*int Index() { return index; }
 	void setIndex(int idx) { index = idx; }
 
 	double ExitPr() { return exitPr; }
@@ -75,7 +78,7 @@ struct Module {
 	void increaseNumMembers() { numMembers++; }
 	void increaseNumMembers(int n) { numMembers += n; }
 	void decreaseNumMembers() { numMembers--; }
-	void decreaseNumMembers(int n) { numMembers -= n; }
+	void decreaseNumMembers(int n) { numMembers -= n; }*/
 
 };
 

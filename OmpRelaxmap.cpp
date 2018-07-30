@@ -50,8 +50,8 @@ int main(int argc, char *argv[]) {
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	cout<<"rank:"<<rank<<endl;
-	cout<<"size:"<<size<<endl;
+	cout << "rank:" << rank << endl;
+	cout << "size:" << size << endl;
 
 	if (argc < 10) {
 		cout
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
 	} else {
 		load_linkList_format_network(networkFile, origNetwork);
 	}
-		//MPI_Send(&origNetwork,1,)
+	//MPI_Send(&origNetwork,1,)
 	gettimeofday(&end, NULL);
 
 	cout << "Time for reading input data : " << elapsedTimeInSec(start, end)
@@ -577,8 +577,8 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 		Module* mod = &(network.modules[network.smActiveMods[i]]);
 
 		// check whether the current module has more than one node or not.
-		if (mod->NumMembers() > 1) {
-			int modIdx = mod->Index();
+		if (mod->numMembers > 1) {
+			int modIdx = mod->index;
 
 			map<int, int> origNodeID;//map from newNodeID to original Node ID. a.k.a. <newNodeID, origNodeID>
 
@@ -619,7 +619,7 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 		Module* mod = &(network.modules[network.lgActiveMods[i]]);
 
 		// NO-NEED to check the size of the current module.
-		int modIdx = mod->Index();
+		int modIdx = mod->index;
 
 		map<int, int> origNodeID;//map from newNodeID to original Node ID. a.k.a. <newNodeID, origNodeID>
 
@@ -682,7 +682,7 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 
 void generate_network_from_module(Network &newNetwork, Module* mod,
 		map<int, int> &origNodeID) {
-	int numMembers = mod->NumMembers();
+	int numMembers = mod->numMembers;
 	newNetwork.modules = vector<Module>(numMembers);
 
 	//cout<<"blah blah blah"<<endl;
@@ -753,7 +753,7 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 
 void generate_network_from_module(Network &newNetwork, Module* mod,
 		map<int, int> &origNodeID, int numTh) {
-	int numMembers = mod->NumMembers();
+	int numMembers = mod->numMembers;
 	newNetwork.modules = vector<Module>(numMembers);
 
 	map<int, int> newNodeID;	// key = origNodeID --> value =  newNodeID.
@@ -844,7 +844,7 @@ void print_twoLevel_Cluster(Network network, string networkName,
 	int modIdx = 0;
 	for (int i = 0; i < nModules; i++) {
 
-		int nMembers = network.modules[i].NumMembers();
+		int nMembers = network.modules[i].numMembers;
 		if (nMembers > 0)
 			modIdx++;
 

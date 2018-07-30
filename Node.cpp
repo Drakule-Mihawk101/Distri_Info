@@ -78,15 +78,15 @@ SuperNode::SuperNode(Module module, int newID)
 	// initialize member variables w.r.t. the given Module object 'module.'
 	id = newID;
 	name = "SuperNode";
-	size = module.SumPr();
-	exitPr = module.ExitPr();
+	size = module.sumPr;
+	exitPr = module.exitPr;
 	nodeWeight = 0.0;	// later adding nodeWeight of each member node.
-	modIdx = module.Index();
+	modIdx = module.index;
 	isModule = false;
 	isSuper = true;
 	orig_module = NULL;
-	teleportWeight = module.SumTPWeight();
-	danglingSize = module.SumDangling();
+	teleportWeight = module.sumTPWeight;
+	danglingSize = module.sumDangling;
 	isDangling = false;		// NEED TO BE CONFIRMED !!!
 
 	int numMembers = module.members.size();
@@ -98,7 +98,7 @@ SuperNode::SuperNode(Module module, int newID)
 		}
 	}
 
-	if (numMembers != module.NumMembers())
+	if (numMembers != module.numMembers)
 		cout << "SuperNode[" << id << "] members.size() != numMembers" << endl;
 
 	if (members.size() != module.members.size())
