@@ -1067,8 +1067,8 @@ int Network::prioritize_move(double vThresh) {
 	struct result {
 		int elementCount;
 		int* index;
-		int* newModule;
-		int* oldModule;
+		int* newModules;
+		int* oldModules;
 		double* diffCodeLen;
 		double* sumPr1;
 		double* sumPr2;
@@ -1085,8 +1085,8 @@ int Network::prioritize_move(double vThresh) {
 	MPI_Aint displacements[structlen];
 
 	resultObj.index = new int[nActive];
-	resultObj.newModule = new int[nActive];
-	resultObj.oldModule = new int[nActive];
+	resultObj.newModules = new int[nActive];
+	resultObj.oldModules = new int[nActive];
 	resultObj.diffCodeLen = new double[nActive];
 	resultObj.sumPr1 = new double[nActive];
 	resultObj.sumPr2 = new double[nActive];
@@ -1095,8 +1095,8 @@ int Network::prioritize_move(double vThresh) {
 	resultObj.newSumExitPr = new double[nActive];
 
 	resultObj1.index = new int[nActive];
-	resultObj1.newModule = new int[nActive];
-	resultObj1.oldModule = new int[nActive];
+	resultObj1.newModules = new int[nActive];
+	resultObj1.oldModules = new int[nActive];
 	resultObj1.diffCodeLen = new double[nActive];
 	resultObj1.sumPr1 = new double[nActive];
 	resultObj1.sumPr2 = new double[nActive];
@@ -1114,11 +1114,11 @@ int Network::prioritize_move(double vThresh) {
 
 	blocklengths[2] = nActive;
 	types[2] = MPI_INT;
-	displacements[2] = (size_t) &(resultObj.newModule[0]) - (size_t) &resultObj;
+	displacements[2] = (size_t) &(resultObj.newModules[0]) - (size_t) &resultObj;
 
 	blocklengths[3] = nActive;
 	types[3] = MPI_INT;
-	displacements[3] = (size_t) &(resultObj.oldModule[0]) - (size_t) &resultObj;
+	displacements[3] = (size_t) &(resultObj.oldModules[0]) - (size_t) &resultObj;
 
 	blocklengths[4] = nActive;
 	types[4] = MPI_DOUBLE;
@@ -1157,12 +1157,12 @@ int Network::prioritize_move(double vThresh) {
 
 	blocklengths[2] = nActive;
 	types[2] = MPI_INT;
-	displacements[2] = (size_t) &(resultObj1.newModule[0])
+	displacements[2] = (size_t) &(resultObj1.newModules[0])
 			- (size_t) &resultObj1;
 
 	blocklengths[3] = nActive;
 	types[3] = MPI_INT;
-	displacements[3] = (size_t) &(resultObj1.oldModule[0])
+	displacements[3] = (size_t) &(resultObj1.oldModules[0])
 			- (size_t) &resultObj1;
 
 	blocklengths[4] = nActive;
@@ -1349,12 +1349,12 @@ int Network::prioritize_move(double vThresh) {
 					// we need to update bestResult with currentResult.
 
 					resultObj.index[resultObj.elementCount] = i;
-					resultObj.oldModule[resultObj.elementCount] = oldMod;
+					resultObj.oldModules[resultObj.elementCount] = oldMod;
 					bestResult.diffCodeLen =
 							resultObj.diffCodeLen[resultObj.elementCount] =
 									currentResult.diffCodeLen;
 					bestResult.newModule =
-							resultObj.newModule[resultObj.elementCount] =
+							resultObj.newModules[resultObj.elementCount] =
 									currentResult.newModule;
 					bestResult.sumPr1 =
 							resultObj.sumPr1[resultObj.elementCount] =
@@ -1477,8 +1477,8 @@ int Network::prioritize_move(double vThresh) {
 					int indx = resultObj1.index[i];
 					int testnewmod;
 					Node& nd = nodes[randomGlobalArray[indx]];
-					int newMod = testnewmod = resultObj1.newModule[i];
-					int oldMod = resultObj1.oldModule[i];
+					int newMod = testnewmod = resultObj1.newModules[i];
+					int oldMod = resultObj1.oldModules[i];
 					if (modules[newMod].numMembers == 0) {
 						newMod = emptyModules.back();
 						emptyModules.pop_back();
@@ -3995,3 +3995,4 @@ void findAssignedPart(int* start, int* end, int numNodes, int numTh, int myID) {
 		}
 	}
 }
+
