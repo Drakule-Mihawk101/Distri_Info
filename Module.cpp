@@ -1054,13 +1054,13 @@ int Network::prioritize_move(double vThresh) {
 		randomLocalArray[target] = tmp;
 	}
 
-	cout << "before rank:" << rank << " mynum:" << mynum << endl;
+	//cout << "before rank:" << rank << " mynum:" << mynum << endl;
 
 	MPI_Allgatherv(&randomLocalArray[0], mynum, MPI_INT, &randomGlobalArray[0],
 			&counts[0], &displs[0], MPI_INT,
 			MPI_COMM_WORLD);
 
-	cout << "after rank:" << rank << " mynum:" << mynum << endl;
+	//cout << "after rank:" << rank << " mynum:" << mynum << endl;
 
 	int numMoved = 0;
 
@@ -1078,31 +1078,38 @@ int Network::prioritize_move(double vThresh) {
 	};
 
 	result resultObj, resultObj1;
+
 	MPI_Datatype resultType;
 	int structlen = 10;
 	int blocklengths[structlen];
 	MPI_Datatype types[structlen];
 	MPI_Aint displacements[structlen];
 
-	resultObj.index = new int[nActive];
-	resultObj.newModules = new int[nActive];
-	resultObj.oldModules = new int[nActive];
-	resultObj.diffCodeLen = new double[nActive];
-	resultObj.sumPr1 = new double[nActive];
-	resultObj.sumPr2 = new double[nActive];
-	resultObj.exitPr1 = new double[nActive];
-	resultObj.exitPr2 = new double[nActive];
-	resultObj.newSumExitPr = new double[nActive];
+	MPI_Datatype resultType1;
+	int structlen1 = 10;
+	int blocklengths1[structlen1];
+	MPI_Datatype types1[structlen1];
+	MPI_Aint displacements1[structlen1];
 
-	resultObj1.index = new int[nActive];
-	resultObj1.newModules = new int[nActive];
-	resultObj1.oldModules = new int[nActive];
-	resultObj1.diffCodeLen = new double[nActive];
-	resultObj1.sumPr1 = new double[nActive];
-	resultObj1.sumPr2 = new double[nActive];
-	resultObj1.exitPr1 = new double[nActive];
-	resultObj1.exitPr2 = new double[nActive];
-	resultObj1.newSumExitPr = new double[nActive];
+	resultObj.index = new int[nActive]();
+	resultObj.newModules = new int[nActive]();
+	resultObj.oldModules = new int[nActive]();
+	resultObj.diffCodeLen = new double[nActive]();
+	resultObj.sumPr1 = new double[nActive]();
+	resultObj.sumPr2 = new double[nActive]();
+	resultObj.exitPr1 = new double[nActive]();
+	resultObj.exitPr2 = new double[nActive]();
+	resultObj.newSumExitPr = new double[nActive]();
+
+	resultObj1.index = new int[nActive]();
+	resultObj1.newModules = new int[nActive]();
+	resultObj1.oldModules = new int[nActive]();
+	resultObj1.diffCodeLen = new double[nActive]();
+	resultObj1.sumPr1 = new double[nActive]();
+	resultObj1.sumPr2 = new double[nActive]();
+	resultObj1.exitPr1 = new double[nActive]();
+	resultObj1.exitPr2 = new double[nActive]();
+	resultObj1.newSumExitPr = new double[nActive]();
 
 	blocklengths[0] = 1;
 	types[0] = MPI_INT;
@@ -1114,11 +1121,13 @@ int Network::prioritize_move(double vThresh) {
 
 	blocklengths[2] = nActive;
 	types[2] = MPI_INT;
-	displacements[2] = (size_t) &(resultObj.newModules[0]) - (size_t) &resultObj;
+	displacements[2] = (size_t) &(resultObj.newModules[0])
+			- (size_t) &resultObj;
 
 	blocklengths[3] = nActive;
 	types[3] = MPI_INT;
-	displacements[3] = (size_t) &(resultObj.oldModules[0]) - (size_t) &resultObj;
+	displacements[3] = (size_t) &(resultObj.oldModules[0])
+			- (size_t) &resultObj;
 
 	blocklengths[4] = nActive;
 	types[4] = MPI_DOUBLE;
@@ -1146,57 +1155,6 @@ int Network::prioritize_move(double vThresh) {
 	displacements[9] = (size_t) &(resultObj.newSumExitPr[0])
 			- (size_t) &resultObj;
 
-	blocklengths[0] = 1;
-	types[0] = MPI_INT;
-	displacements[0] = (size_t) &(resultObj1.elementCount)
-			- (size_t) &resultObj1;
-
-	blocklengths[1] = nActive;
-	types[1] = MPI_INT;
-	displacements[1] = (size_t) &(resultObj1.index[0]) - (size_t) &resultObj1;
-
-	blocklengths[2] = nActive;
-	types[2] = MPI_INT;
-	displacements[2] = (size_t) &(resultObj1.newModules[0])
-			- (size_t) &resultObj1;
-
-	blocklengths[3] = nActive;
-	types[3] = MPI_INT;
-	displacements[3] = (size_t) &(resultObj1.oldModules[0])
-			- (size_t) &resultObj1;
-
-	blocklengths[4] = nActive;
-	types[4] = MPI_DOUBLE;
-	displacements[4] = (size_t) &(resultObj1.diffCodeLen[0])
-			- (size_t) &resultObj1;
-
-	blocklengths[5] = nActive;
-	types[5] = MPI_DOUBLE;
-	displacements[5] = (size_t) &(resultObj1.sumPr1[0]) - (size_t) &resultObj1;
-
-	blocklengths[6] = nActive;
-	types[6] = MPI_DOUBLE;
-	displacements[6] = (size_t) &(resultObj1.sumPr2[0]) - (size_t) &resultObj1;
-
-	blocklengths[7] = nActive;
-	types[7] = MPI_DOUBLE;
-	displacements[7] = (size_t) &(resultObj1.exitPr1[0]) - (size_t) &resultObj1;
-
-	blocklengths[8] = nActive;
-	types[8] = MPI_DOUBLE;
-	displacements[8] = (size_t) &(resultObj1.exitPr2[0]) - (size_t) &resultObj1;
-
-	blocklengths[9] = nActive;
-	types[9] = MPI_DOUBLE;
-	displacements[9] = (size_t) &(resultObj1.newSumExitPr[0])
-			- (size_t) &resultObj1;
-
-	/*	if (rank == 0) {
-	 for (int in = 0; in < structlen; in++) {
-	 cout << "displace:" << in << " " << displacements[in] << endl;
-	 }
-	 }*/
-
 	MPI_Type_create_struct(structlen, blocklengths, displacements, types,
 			&resultType);
 
@@ -1206,8 +1164,69 @@ int Network::prioritize_move(double vThresh) {
 		MPI_Type_extent(resultType, &typesize);
 	}
 
-// Move each node to one of its neighbor modules in random sequential order.
+	blocklengths1[0] = 1;
+	types1[0] = MPI_INT;
+	displacements1[0] = (size_t) &(resultObj1.elementCount)
+			- (size_t) &resultObj1;
 
+	blocklengths1[1] = nActive;
+	types1[1] = MPI_INT;
+	displacements1[1] = (size_t) &(resultObj1.index[0]) - (size_t) &resultObj1;
+
+	blocklengths1[2] = nActive;
+	types1[2] = MPI_INT;
+	displacements1[2] = (size_t) &(resultObj1.newModules[0])
+			- (size_t) &resultObj1;
+
+	blocklengths1[3] = nActive;
+	types1[3] = MPI_INT;
+	displacements1[3] = (size_t) &(resultObj1.oldModules[0])
+			- (size_t) &resultObj1;
+
+	blocklengths1[4] = nActive;
+	types1[4] = MPI_DOUBLE;
+	displacements1[4] = (size_t) &(resultObj1.diffCodeLen[0])
+			- (size_t) &resultObj1;
+
+	blocklengths1[5] = nActive;
+	types1[5] = MPI_DOUBLE;
+	displacements1[5] = (size_t) &(resultObj1.sumPr1[0]) - (size_t) &resultObj1;
+
+	blocklengths1[6] = nActive;
+	types1[6] = MPI_DOUBLE;
+	displacements1[6] = (size_t) &(resultObj1.sumPr2[0]) - (size_t) &resultObj1;
+
+	blocklengths1[7] = nActive;
+	types1[7] = MPI_DOUBLE;
+	displacements1[7] = (size_t) &(resultObj1.exitPr1[0])
+			- (size_t) &resultObj1;
+
+	blocklengths1[8] = nActive;
+	types1[8] = MPI_DOUBLE;
+	displacements1[8] = (size_t) &(resultObj1.exitPr2[0])
+			- (size_t) &resultObj1;
+
+	blocklengths1[9] = nActive;
+	types1[9] = MPI_DOUBLE;
+	displacements1[9] = (size_t) &(resultObj1.newSumExitPr[0])
+			- (size_t) &resultObj1;
+
+	MPI_Type_create_struct(structlen1, blocklengths1, displacements1, types1,
+			&resultType1);
+
+	MPI_Type_commit(&resultType1);
+	{
+		MPI_Aint typesize1;
+		MPI_Type_extent(resultType1, &typesize1);
+	}
+
+	/*	if (rank == 0) {
+	 for (int in = 0; in < structlen; in++) {
+	 cout << "displace:" << in << " " << displacements[in] << endl;
+	 }
+	 }*/
+
+// Move each node to one of its neighbor modules in random sequential order.
 	for (int i = displs[rank]; i < displs[rank] + counts[rank]; i++) {
 		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
@@ -1327,7 +1346,7 @@ int Network::prioritize_move(double vThresh) {
 
 				currentResult.newSumExitPr = sumAllExitPr + newExitPr1
 						+ currentResult.exitPr2 - oldExitPr1 - oldExitPr2;
-				printf("rank:%d, sumAllExitPr:%f", rank, sumAllExitPr);
+				//printf("rank:%d, sumAllExitPr:%f", rank, sumAllExitPr);
 
 				// Calculate delta_L(M) = L(M)_new - L(M)_old
 				double delta_allExit_log_allExit = pLogP(
@@ -1379,61 +1398,64 @@ int Network::prioritize_move(double vThresh) {
 
 		// Make best possible move for the current node nd.
 		//if (bestResult.diffCodeLen < 0.0) {
-		/*if (bestResult.diffCodeLen < vThresh) {
-		 // update related to newMod...
-		 int newMod = bestResult.newModule;
+		if (bestResult.diffCodeLen < vThresh) {
+			// update related to newMod...
+			int newMod = bestResult.newModule;
 
-		 if (modules[newMod].numMembers == 0) {
-		 newMod = emptyModules.back();
-		 emptyModules.pop_back();
-		 nEmptyMod--;
-		 nModule++;
-		 }
-		 nd.setModIdx(newMod);
+			if (modules[newMod].numMembers == 0) {
+				newMod = emptyModules.back();
+				emptyModules.pop_back();
+				nEmptyMod--;
+				nModule++;
+			}
+			nd.setModIdx(newMod);
 
-		 modules[newMod].numMembers++;
-		 modules[newMod].exitPr = bestResult.exitPr2;
-		 modules[newMod].sumPr = bestResult.sumPr2;
-		 modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
-		 modules[newMod].sumTPWeight += ndTPWeight;
+			modules[newMod].numMembers++;
+			modules[newMod].exitPr = bestResult.exitPr2;
+			modules[newMod].sumPr = bestResult.sumPr2;
+			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			modules[newMod].sumTPWeight += ndTPWeight;
 
-		 if (nd.IsDangling()) {
-		 modules[newMod].sumDangling += ndSize;
-		 modules[oldMod].sumDangling -= ndSize;
-		 }
+			if (nd.IsDangling()) {
+				modules[newMod].sumDangling += ndSize;
+				modules[oldMod].sumDangling -= ndSize;
+			}
 
-		 // update related to the oldMod...
-		 modules[oldMod].numMembers--;
-		 modules[oldMod].exitPr = bestResult.exitPr1;
-		 modules[oldMod].sumPr = bestResult.sumPr1;
-		 modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-		 modules[oldMod].sumTPWeight -= ndTPWeight;
+			// update related to the oldMod...
+			modules[oldMod].numMembers--;
+			modules[oldMod].exitPr = bestResult.exitPr1;
+			modules[oldMod].sumPr = bestResult.sumPr1;
+			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-		 if (modules[oldMod].numMembers == 0) {
-		 nEmptyMod++;
-		 nModule--;
-		 emptyModules.push_back(oldMod);
-		 }
+			if (modules[oldMod].numMembers == 0) {
+				nEmptyMod++;
+				nModule--;
+				emptyModules.push_back(oldMod);
+			}
 
-		 sumAllExitPr = bestResult.newSumExitPr;
+			sumAllExitPr = bestResult.newSumExitPr;
 
-		 codeLength += bestResult.diffCodeLen;
-		 numMoved++;
+			codeLength += bestResult.diffCodeLen;
+			numMoved++;
 
-		 // update activeNodes and isActives vectors.
-		 // We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
-		 for (link_iterator linkIt = nd.outLinks.begin();
-		 linkIt != nd.outLinks.end(); linkIt++)
-		 isActives[linkIt->first] = 1;		// set as an active nodes.
+			/*			localCodelength[0] += bestResult.diffCodeLen;
+			 localNumMoved[0]++;*/
 
-		 for (link_iterator linkIt = nd.inLinks.begin();
-		 linkIt != nd.inLinks.end(); linkIt++)
-		 isActives[linkIt->first] = 1;		// set as an active nodes.
-		 }*/
+			// update activeNodes and isActives vectors.
+			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
+			for (link_iterator linkIt = nd.outLinks.begin();
+					linkIt != nd.outLinks.end(); linkIt++)
+				isActives[linkIt->first] = 1;		// set as an active nodes.
+
+			for (link_iterator linkIt = nd.inLinks.begin();
+					linkIt != nd.inLinks.end(); linkIt++)
+				isActives[linkIt->first] = 1;		// set as an active nodes.
+		}
 	}
 
-	cout << "beforerank:" << rank << " elementCount:" << resultObj.elementCount
-			<< endl;
+	//cout << "beforerank:" << rank << " elementCount:" << resultObj.elementCount
+	//<< endl;
 
 	/*	MPI_Bcast(&resultObj, 1, resultType, rank,
 	 MPI_COMM_WORLD);*/
@@ -1457,6 +1479,11 @@ int Network::prioritize_move(double vThresh) {
 	 }
 	 }
 	 }*/
+
+	for (int i = 0; i < resultObj.elementCount; i++) {
+		printf("rank:%d,resutlObj.diffcodelength[%d], diffcodelength:%f\n",
+				rank, i, resultObj.diffCodeLen[i]);
+	}
 	for (int prId = 0; prId < size; prId++) {
 		if (prId != rank) {
 			MPI_Send(&resultObj, 1, resultType, prId, 0,
@@ -1466,16 +1493,19 @@ int Network::prioritize_move(double vThresh) {
 
 	for (int sId = 0; sId < size; sId++) {
 		if (sId != rank) {
-			MPI_Recv(&resultObj1, 1, resultType, MPI_ANY_SOURCE, 0,
+			MPI_Recv(&resultObj1, 1, resultType1, MPI_ANY_SOURCE, 0,
 			MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			//cout<<"################################"<<endl;
 			//cout << "afterrank:" << rank << " elementCount:" << resultObj.elementCount
 			//	<< endl;
 			for (int i = 0; i < resultObj1.elementCount; i++) {
+				printf("resultObj1.diffCodeLen[%d], diffCodeLen:%f\n", i,
+						resultObj1.diffCodeLen[i]);
 				if (resultObj1.diffCodeLen[i] < vThresh) {
 					int indx = resultObj1.index[i];
 					int testnewmod;
+					printf("indx:%d\n", resultObj1.index[i]);
 					Node& nd = nodes[randomGlobalArray[indx]];
 					int newMod = testnewmod = resultObj1.newModules[i];
 					int oldMod = resultObj1.oldModules[i];
@@ -1518,10 +1548,10 @@ int Network::prioritize_move(double vThresh) {
 
 					sumAllExitPr = resultObj1.newSumExitPr[indx];
 
-					localCodelength[0] += resultObj1.diffCodeLen[i];
-					localNumMoved[0]++;
-					/*					codeLength += resultObj.diffCodeLen[i];
-					 numMoved++;*/
+					/*					localCodelength[0] += resultObj1.diffCodeLen[i];
+					 localNumMoved[0]++;*/
+					codeLength += resultObj1.diffCodeLen[i];
+					numMoved++;
 					// update activeNodes and isActives vectors.
 					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 					for (link_iterator linkIt = nd.outLinks.begin();
@@ -1534,10 +1564,8 @@ int Network::prioritize_move(double vThresh) {
 
 				}
 			}
-
 		}
 	}
-
 	//codeLength += localCodeLength;
 	//numMoved += localNumMoved;
 
@@ -1582,18 +1610,18 @@ int Network::prioritize_move(double vThresh) {
 	 cout << "bbbbbb" << endl;
 	 numMoved += localNumMoved;*/
 
-	MPI_Allgatherv(&localCodelength[0], 1, MPI_DOUBLE, &globalCodelength[0],
-			&count[0], &displacement[0], MPI_DOUBLE,
-			MPI_COMM_WORLD);
+	/*	MPI_Allgatherv(&localCodelength[0], 1, MPI_DOUBLE, &globalCodelength[0],
+	 &count[0], &displacement[0], MPI_DOUBLE,
+	 MPI_COMM_WORLD);
 
-	MPI_Allgatherv(&localNumMoved[0], 1, MPI_INT, &globalNumMoved[0], &count[0],
-			&displacement[0], MPI_INT,
-			MPI_COMM_WORLD);
+	 MPI_Allgatherv(&localNumMoved[0], 1, MPI_INT, &globalNumMoved[0], &count[0],
+	 &displacement[0], MPI_INT,
+	 MPI_COMM_WORLD);
 
-	for (int index = 0; index < size; index++) {
-		codeLength += globalCodelength[index];
-		numMoved += globalNumMoved[index];
-	}
+	 for (int index = 0; index < size; index++) {
+	 codeLength += globalCodelength[index];
+	 numMoved += globalNumMoved[index];
+	 }*/
 
 	vector<int>().swap(activeNodes);
 	for (int i = 0; i < isActives.size(); i++) {
@@ -1619,6 +1647,7 @@ int Network::prioritize_move(double vThresh) {
 	delete[] localNumMoved;
 	delete[] globalNumMoved;
 	MPI_Type_free(&resultType);
+	MPI_Type_free(&resultType1);
 	return numMoved;
 }
 
@@ -3791,7 +3820,8 @@ double Network::calculateCodeLength() {
 // make a group of nodes as a Node (here, SuperNode)
 // Granularity of the network is same but a group of nodes move together instead of moving individually.
 void Network::convertModulesToSuperNodes(int numTh) {
-//initialize superNodes vector for updating w.r.t. the current module status.
+
+	//initialize superNodes vector for updating w.r.t. the current module status.
 	vector<SuperNode>().swap(superNodes);
 	superNodes.reserve(nModule);
 
@@ -3856,7 +3886,7 @@ void Network::convertModulesToSuperNodes(int numTh) {
 		}
 	}
 
-// update inLinks in SEQUENTIAL..
+	// update inLinks in SEQUENTIAL..
 	for (int i = 0; i < numSPNode; i++) {
 		int nOutLinks = superNodes[i].outLinks.size();
 		for (int j = 0; j < nOutLinks; j++)
