@@ -21,6 +21,16 @@
 #include "timing.h"
 #include <mpi.h>
 #include <cstdio>
+#include <stdexcept>
+#include "segvcatch.h"
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
 
 //typedef __gnu_cxx::hash_map<int, double> flowmap;
 typedef map<int, double> flowmap;
@@ -583,7 +593,6 @@ void Network::calculateSteadyState(int numTh) {
 		/*cout << "final value of sum:" << sum << " iteration:" << iteration
 		 << endl;*/
 		sqdiff = 0.0;
-
 		/*#pragma omp parallel reduction (+:sqdiff)
 		 {
 		 int myID = omp_get_thread_num();
@@ -982,37 +991,47 @@ int Network::prioritize_move(double vThresh) {
 	int rank;
 	int elementsCount = 0;
 	int nActive = 0;
+	int nAc = 0;
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	printf("roop:%d\n", rank);
+
 	if (rank == 0) {
 		nActive = activeNodes.size();
+		for (int sId = 1; sId < size; sId++) {
+			MPI_Send(&nActive, 1, MPI_INT, sId, 9, MPI_COMM_WORLD);
+		}
 	}
 
+	//cout << "balle:" << rank << endl;
 	int nNextActive = 0;// This is a counter for the number of active nodes on next iteration.
 
-	MPI_Bcast(&nActive, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	if (rank != 0) {
+		MPI_Recv(&nAc, 1, MPI_INT, 0, 9, MPI_COMM_WORLD,
+		MPI_STATUSES_IGNORE);
+		nActive = nAc;
+	}
+	//MPI_Bcast(&nActive, 1, MPI_INT, 0, MPI_COMM_WORLD);
 // Generate random sequential order of active nodes.
 	//int *randomGlobalArray = new int[nActive];
-	int *randomGlobalArray = new int[nActive];
+
+	int *randomGlobalArray = new int[nActive]();
 	int l = nActive / size;
 	//int count
 	//int *counts = new int[size];
 	//int *displs = new int[size];
-	int *counts = new int[size];
-	int *displs = new int[size];
-	int *count = new int[size];
-	int *displacement = new int[size];
-	double *localCodelength = new double[size];
-	double *globalCodelength = new double[size];
-	int *localNumMoved = new int[size];
-	int *globalNumMoved = new int[size];
+	int *counts = new int[size]();
+	int *displs = new int[size]();
+	double *localCodelength = new double[size]();
+	double *globalCodelength = new double[size]();
+	int *localNumMoved = new int[size]();
+	int *globalNumMoved = new int[size]();
+	printf("balle:%d\n", rank);
 
 	int i;
 	for (i = 0; i < size - 1; i++) {
-		count[i] = 1;
-		displacement[i] = i;
 		counts[i] = l;
 		displs[i] = l * i;
 		localCodelength[i] = 0.0;
@@ -1024,13 +1043,17 @@ int Network::prioritize_move(double vThresh) {
 	globalCodelength[size - 1] = 0.0;
 	localNumMoved[size - 1] = 0;
 	globalNumMoved[size - 1] = 0;
-	count[size - 1] = 1;
-	displacement[size - 1] = size - 1;
 	displs[size - 1] = l * i;
 	counts[size - 1] = nActive - l * i;
 
 	//int *randomLocalArray = new int[counts[rank]];
-	int *randomLocalArray = new int[counts[rank]];
+	int *randomLocalArray = new int[counts[rank]]();
+	if (rank == 0) {
+		for (int n = 0; n < counts[rank]; n++) {
+			printf("*********randomLocalArray[%d]=%d************\n", n,
+					randomLocalArray[n]);
+		}
+	}
 	int mynum = counts[rank];
 
 	vector<int> randomOrder(nActive);
@@ -1040,11 +1063,42 @@ int Network::prioritize_move(double vThresh) {
 		//randomOrder[i] = activeNodes[i];
 	}
 
+	cout << "1111" << endl;
 	/*int start, end;
 	 findAssignedPart(&start, &end, nActive, size, rank);
 	 */
+	if (rank == 0) {
+		printf("\n***********Before scattering************\n");
+		for (int it = 0; it < size; it++) {
+			printf("count[%d]:%d\n", it, counts[it]);
+			printf("displs[%d]:%d\n", it, displs[it]);
+		}
+		for (int it = 0; it < nActive; it++) {
+			printf("randomGlobalArray[%d]:%d\n", it, randomGlobalArray[it]);
+		}
+		printf("\n");
+		for (int it = 0; it < counts[rank]; it++) {
+			printf("randomLocalArray[%d]:%d\n", it, randomLocalArray[it]);
+		}
+	}
 	MPI_Scatterv(&randomGlobalArray[0], &counts[0], &displs[0], MPI_INT,
 			&randomLocalArray[0], mynum, MPI_INT, 0, MPI_COMM_WORLD);
+
+	if (rank == 0) {
+		printf("\n***********After scattering************\n");
+		for (int it = 0; it < size; it++) {
+			printf("count[%d]:%d\n", it, counts[it]);
+			printf("displs[%d]:%d\n", it, displs[it]);
+		}
+		for (int it = 0; it < nActive; it++) {
+			printf("randomGlobalArray[%d]:%d\n", it, randomGlobalArray[it]);
+		}
+		printf("\n");
+		for (int it = 0; it < counts[rank]; it++) {
+			printf("randomLocalArray[%d]:%d\n", it, randomLocalArray[it]);
+		}
+		printf("\n");
+	}
 
 	for (int i = 0; i < mynum; i++) {
 		int target = R->randInt(mynum - 1);
@@ -1054,15 +1108,52 @@ int Network::prioritize_move(double vThresh) {
 		randomLocalArray[target] = tmp;
 	}
 
-	//cout << "before rank:" << rank << " mynum:" << mynum << endl;
+	if (rank == 0) {
+		printf("\n************Before gathering************\n");
+		for (int it = 0; it < size; it++) {
+			printf("count[%d]:%d\n", it, counts[it]);
+			printf("displs[%d]:%d\n", it, displs[it]);
+		}
+		for (int it = 0; it < nActive; it++) {
+			printf("randomGlobalArray[%d]:%d\n", it, randomGlobalArray[it]);
+		}
+		printf("\n");
+		for (int it = 0; it < counts[rank]; it++) {
+			printf("randomLocalArray[%d]:%d\n", it, randomLocalArray[it]);
+		}
+		printf("\n");
+	}
 
 	MPI_Allgatherv(&randomLocalArray[0], mynum, MPI_INT, &randomGlobalArray[0],
 			&counts[0], &displs[0], MPI_INT,
 			MPI_COMM_WORLD);
 
-	//cout << "after rank:" << rank << " mynum:" << mynum << endl;
+	if (rank == 0) {
+		printf("\n************After gathering************\n");
+		for (int it = 0; it < size; it++) {
+			printf("count[%d]:%d\n", it, counts[it]);
+			printf("displs[%d]:%d\n", it, displs[it]);
+		}
+		for (int it = 0; it < nActive; it++) {
+			printf("randomGlobalArray[%d]:%d\n", it, randomGlobalArray[it]);
+		}
+		printf("\n");
+		for (int it = 0; it < counts[rank]; it++) {
+			printf("randomLocalArray[%d]:%d\n", it, randomLocalArray[it]);
+		}
+		printf("\n");
+	}
 
+	printf("naiyo:%d\n", rank);
+
+	/*	for (int i = 0; i < nActive; i++) {
+	 printf("rank:%d,randomGlobalArray[%d],node:%d\n", rank, i,
+	 randomGlobalArray[i]);
+	 }*/
+	//cout << "after rank:" << rank << " mynum:" << mynum << endl;
 	int numMoved = 0;
+
+	cout << "4444" << endl;
 
 	struct result {
 		int elementCount;
@@ -1226,11 +1317,15 @@ int Network::prioritize_move(double vThresh) {
 	 }
 	 }*/
 
+	cout << "5555" << endl;
 // Move each node to one of its neighbor modules in random sequential order.
 	for (int i = displs[rank]; i < displs[rank] + counts[rank]; i++) {
 		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
 		resultObj.elementCount = 0;
+
+		if (rank == 4)
+			printf("rank:%d,**************************,i:%d\n", rank, i);
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
@@ -1392,6 +1487,8 @@ int Network::prioritize_move(double vThresh) {
 									currentResult.newSumExitPr;
 
 					resultObj.elementCount++;
+					printf("%d, result object element count:%d\n", i,
+							resultObj.elementCount);
 				}
 			}
 		}
@@ -1403,6 +1500,7 @@ int Network::prioritize_move(double vThresh) {
 			int newMod = bestResult.newModule;
 
 			if (modules[newMod].numMembers == 0) {
+				printf("rank:%d, xxxxxxxxxxxxxx emtpy module\n", rank);
 				newMod = emptyModules.back();
 				emptyModules.pop_back();
 				nEmptyMod--;
@@ -1446,11 +1544,11 @@ int Network::prioritize_move(double vThresh) {
 			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 			for (link_iterator linkIt = nd.outLinks.begin();
 					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;		// set as an active nodes.
+				isActives[linkIt->first] = 1;	// set as an active nodes.
 
 			for (link_iterator linkIt = nd.inLinks.begin();
 					linkIt != nd.inLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;		// set as an active nodes.
+				isActives[linkIt->first] = 1;	// set as an active nodes.
 		}
 	}
 
@@ -1480,9 +1578,12 @@ int Network::prioritize_move(double vThresh) {
 	 }
 	 }*/
 
-	for (int i = 0; i < resultObj.elementCount; i++) {
-		printf("rank:%d,resutlObj.diffcodelength[%d], diffcodelength:%f\n",
-				rank, i, resultObj.diffCodeLen[i]);
+	printf("resultObject element count:%d\n++++++++++++++++",
+			resultObj.elementCount);
+	int counter = resultObj.elementCount;
+	for (int ite = 0; ite < counter; ite++) {
+		printf("rank:%d, resutlObj.diffcodelength[%d], diffcodelength:%f\n",
+				rank, ite, resultObj.diffCodeLen[i]);
 	}
 	for (int prId = 0; prId < size; prId++) {
 		if (prId != rank) {
@@ -1514,8 +1615,11 @@ int Network::prioritize_move(double vThresh) {
 						emptyModules.pop_back();
 						nEmptyMod--;
 						nModule++;
-						if (testnewmod != newMod)
+						if (testnewmod != newMod) {
+							printf("rank:%d,newMod:%d,testnewMod:%d\n", rank,
+									newMod, testnewmod);
 							cout << "ring ring ring" << endl;
+						}
 					}
 					nd.setModIdx(newMod);
 
@@ -1542,6 +1646,7 @@ int Network::prioritize_move(double vThresh) {
 					if (modules[oldMod].numMembers == 0) {
 						nEmptyMod++;
 						nModule--;
+						printf("rank:%d,oldMod:%d\n", rank, oldMod);
 						emptyModules.push_back(oldMod);
 						cout << "cring cring cring" << endl;
 					}
@@ -1640,8 +1745,6 @@ int Network::prioritize_move(double vThresh) {
 	delete[] randomLocalArray;
 	delete[] counts;
 	delete[] displs;
-	delete[] count;
-	delete[] displacement;
 	delete[] localCodelength;
 	delete[] globalCodelength;
 	delete[] localNumMoved;

@@ -21,6 +21,8 @@
 #include "FileIO.h"
 #include "timing.h"
 #include <mpi.h>
+#include <stdexcept>
+#include "segvcatch.h"
 
 using namespace std;
 
@@ -44,12 +46,31 @@ void findAssignedPart(int* start, int* end, int numNodes, int numTh, int myID);
 
 int main(int argc, char *argv[]) {
 
+	segvcatch::init_segv();
+	segvcatch::init_fpe();
+
+	/*	try {
+	 *(int*) 0 = 0;
+	 } catch (std::exception& e) {
+	 std::cout << "Exception caught : " << e.what() << std::endl;
+	 }
+
+	 try {
+	 int v = 0;
+	 std::cout << 10 / v << std::endl;
+	 } catch (std::exception& e) {
+	 std::cout << "Exception caught : " << e.what() << std::endl;
+	 }
+
+	 std::cout << "We are living yet!" << std::endl;*/
+
 	int rank, size;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	cout << "bell:" << rank << endl;
 	//cout << "rank:" << rank << endl;
 	//cout << "size:" << size << endl;
 
@@ -295,6 +316,10 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	double oldCodeLength = network.CodeLength();
 	int iter = 0;
 	bool stop = false;
+	int rank, size;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 	struct timeval outer_T1, outer_T2;
 	struct timeval inner_T1, inner_T2;
@@ -318,16 +343,20 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 	int numMoved = 0;
 
+
 	while (!stop && iter < maxIter) {
 		gettimeofday(&inner_T1, NULL);
+
+		cout << "dekha:" << rank << endl;
 
 		oldCodeLength = network.CodeLength();
 
 		if (fineTune) {
 			if (numTh == 1) {
-				if (prior)
+				if (prior) {
+					cout << "pyar:" << endl;
 					numMoved = network.prioritize_move(vThresh);
-				else
+				} else
 					numMoved = network.move();
 			} else {
 				if (prior)
