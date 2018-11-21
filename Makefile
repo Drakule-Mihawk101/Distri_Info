@@ -8,8 +8,8 @@ LFLAGS =  -g -fopenmp -lm
 
 TARGET  = ompRelaxmap
 
-HEADER  = Node.h Module.h FileIO.h timing.h
-FILES = OmpRelaxmap.cpp Node.cpp Module.cpp FileIO.cpp timing.cpp
+HEADER  = Node.h Module.h FileIO.h timing.h i386-signal.h x86_64-signal.h segvcatch.h
+FILES = OmpRelaxmap.cpp Node.cpp Module.cpp FileIO.cpp timing.cpp segvcatch.cpp
 
 OBJECTS = $(FILES:.cpp=.o)
 

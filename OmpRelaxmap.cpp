@@ -21,8 +21,8 @@
 #include "FileIO.h"
 #include "timing.h"
 #include <mpi.h>
-#include <stdexcept>
-#include "segvcatch.h"
+//#include <stdexcept>
+//#include "segvcatch.h"
 
 using namespace std;
 
@@ -46,8 +46,8 @@ void findAssignedPart(int* start, int* end, int numNodes, int numTh, int myID);
 
 int main(int argc, char *argv[]) {
 
-	segvcatch::init_segv();
-	segvcatch::init_fpe();
+	//segvcatch::init_segv();
+	//segvcatch::init_fpe();
 
 	/*	try {
 	 *(int*) 0 = 0;
@@ -197,9 +197,15 @@ int main(int argc, char *argv[]) {
 	// Now update inLinks..
 	for (int i = 0; i < nNode; i++) {
 		int nOutLinks = origNetwork.nodes[i].outLinks.size();
+
+		printf("i:%d, origNetwork.nodes[i].outLinks.size():%d\n", i,
+				origNetwork.nodes[i].outLinks.size());
 		for (int j = 0; j < nOutLinks; j++)
 			origNetwork.nodes[origNetwork.nodes[i].outLinks[j].first].inLinks.push_back(
 					make_pair(i, origNetwork.nodes[i].outLinks[j].second));
+		if(rank==2)
+		printf("o:%d, origNetwork.nodes[i].inLinks.size():%d\n", i,
+				origNetwork.nodes[i].inLinks.size());
 	}
 
 	gettimeofday(&end, NULL);
@@ -342,7 +348,6 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	}
 
 	int numMoved = 0;
-
 
 	while (!stop && iter < maxIter) {
 		gettimeofday(&inner_T1, NULL);
@@ -604,7 +609,6 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 		int myID = omp_get_thread_num();	// get my thread ID.
 
 		Module* mod = &(network.modules[network.smActiveMods[i]]);
-
 		// check whether the current module has more than one node or not.
 		if (mod->numMembers > 1) {
 			int modIdx = mod->index;
@@ -712,9 +716,9 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 void generate_network_from_module(Network &newNetwork, Module* mod,
 		map<int, int> &origNodeID) {
 	int numMembers = mod->numMembers;
+
 	newNetwork.modules = vector<Module>(numMembers);
 
-	//cout<<"blah blah blah"<<endl;
 	map<int, int> newNodeID;	// key = origNodeID --> value =  newNodeID.
 
 	int newIdx = 0;
@@ -722,7 +726,6 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 			it != mod->members.end(); it++) {
 		newNodeID[(*it)->ID()] = newIdx;
 		origNodeID[newIdx] = (*it)->ID();
-
 		Node nd(newIdx, (*it)->Size());
 		nd.setNodeWeight((*it)->NodeWeight());
 		nd.setTeleportWeight((*it)->TeleportWeight());
@@ -735,10 +738,11 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 
 	// add outLinks within the newNetwork.
 	for (int i = 0; i < numMembers; i++) {
+		cout << "oh nothing" << endl;
 		Node* it = mod->members[i];
 		int nid = newNodeID[it->ID()];
+		cout << "are you sure" << endl;
 		Node* nd_ptr = &(newNetwork.nodes[nid]);
-
 		for (link_iterator link_it = it->outLinks.begin();
 				link_it != it->outLinks.end(); link_it++) {
 			// check whether the edge within the module or not.

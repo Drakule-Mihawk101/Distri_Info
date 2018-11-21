@@ -87,6 +87,7 @@ void load_pajek_format_network(string fName, Network &network) {
 
 	network.modules = vector<Module>(nNode);
 	network.nodes = vector<Node>(nNode);
+	network.processTags = new int[8]();
 	double totNodeWeights = 0.0;
 
 	// Read node names, assuming order 1, 2, 3, ...
