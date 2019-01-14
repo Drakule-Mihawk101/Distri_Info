@@ -23,13 +23,14 @@ using namespace std;
 typedef vector<pair<int, double> >::iterator link_iterator;	// outLinks, inLinks iterator definition.
 
 class Node {
-protected:
+public:
 	int id;					// node ID number
 	string name;// node name.	// initialized with empty string via string().
 	double size;			// p_alpha.  
 	double exitPr;		// exitPr for SuperNode or Node from original module.
+
 	double nodeWeight;		// node weight for non-uniform teleport weight.
-	int modIdx;				// module index number.
+
 	bool isModule;			// true: if it is a module in the previous level
 							// false: otherwise
 	bool isSuper;// true: if it is superNode (it is a group of nodes in the current level)
@@ -42,6 +43,8 @@ protected:
 	bool isDangling;		// true: if it is a dangling node, false: otherwise.
 
 public:
+
+	int modIdx;				// module index number.
 	vector<pair<int, double> > outLinks;	// outlinks: <nodeIDto, weight>
 	vector<pair<int, double> > inLinks;		// inlinks: <nodeIDfrom, weight>	
 

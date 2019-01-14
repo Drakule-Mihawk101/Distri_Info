@@ -49,21 +49,6 @@ int main(int argc, char *argv[]) {
 	//segvcatch::init_segv();
 	//segvcatch::init_fpe();
 
-	/*	try {
-	 *(int*) 0 = 0;
-	 } catch (std::exception& e) {
-	 std::cout << "Exception caught : " << e.what() << std::endl;
-	 }
-
-	 try {
-	 int v = 0;
-	 std::cout << 10 / v << std::endl;
-	 } catch (std::exception& e) {
-	 std::cout << "Exception caught : " << e.what() << std::endl;
-	 }
-
-	 std::cout << "We are living yet!" << std::endl;*/
-
 	int rank, size;
 
 	MPI_Init(&argc, &argv);
@@ -203,9 +188,9 @@ int main(int argc, char *argv[]) {
 		for (int j = 0; j < nOutLinks; j++)
 			origNetwork.nodes[origNetwork.nodes[i].outLinks[j].first].inLinks.push_back(
 					make_pair(i, origNetwork.nodes[i].outLinks[j].second));
-		if(rank==2)
-		printf("o:%d, origNetwork.nodes[i].inLinks.size():%d\n", i,
-				origNetwork.nodes[i].inLinks.size());
+		if (rank == 2)
+			printf("o:%d, origNetwork.nodes[i].inLinks.size():%d\n", i,
+					origNetwork.nodes[i].inLinks.size());
 	}
 
 	gettimeofday(&end, NULL);
@@ -352,46 +337,69 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	while (!stop && iter < maxIter) {
 		gettimeofday(&inner_T1, NULL);
 
-		cout << "dekha:" << rank << endl;
-
 		oldCodeLength = network.CodeLength();
 
 		if (fineTune) {
 			if (numTh == 1) {
 				if (prior) {
-					cout << "pyar:" << endl;
-					numMoved = network.prioritize_move(vThresh);
-				} else
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
+					numMoved = network.prioritize_move(vThresh, iter);
+				} else {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.move();
+				}
 			} else {
-				if (prior)
+				if (prior) {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.prioritize_parallelMove(numTh,
 							tSequential, vThresh);
-				else
+				} else {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.parallelMove(numTh, tSequential);
+				}
 			}
 		} else {
 			if (numTh == 1) {
-				if (prior)
-					numMoved = network.prioritize_moveSPnodes(vThresh);
-				else
+				if (prior) {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
+					numMoved = network.prioritize_moveSPnodes(vThresh, iter);
+				} else {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.moveSuperNodes();// If at least one node is moved, return true. Otherwise, return false.
+				}
 			} else {
-				if (prior)
+				if (prior) {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
 							tSequential, vThresh);
-				else
+				} else {
+					printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
+							fineTune, numTh, prior, iter);
 					numMoved = network.parallelMoveSuperNodes(numTh,
 							tSequential);
+				}
 			}
 		}
 		iter++;
 
-		if (oldCodeLength - network.CodeLength() >= 0
-				&& (oldCodeLength - network.CodeLength()) / log(2.0)
-						< threshold)
-			stop = true;	//moved = false;
+		printf(
+				"the old codelength is:%f, the new codeLength is:%f, the iteration:%d\n",
+				oldCodeLength, network.CodeLength(), iter);
 
+		printf("after %d iteration, the value of the modules for rank:%d\n",
+				iter, rank);
+
+		if (((oldCodeLength - network.CodeLength() >= 0
+				&& (oldCodeLength - network.CodeLength()) / log(2.0) < threshold))) {
+			stop = true;	//moved = false;
+		}
 		gettimeofday(&inner_T2, NULL);
 
 		// Print code length per iteration for DEBUG purpose.
@@ -409,6 +417,11 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 	int outerLoop = 1;
 
+	/*	for (int k = 0; k < network.NNode(); k++) {
+	 printf("ranking:%d,nodeId:%d, modId:%d\n", rank, k,
+	 network.nodes[k].modIdx);
+	 }*/
+
 	network.updateMembersInModule();
 
 	gettimeofday(&seq_T2, NULL);
@@ -418,14 +431,16 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		return;
 
 	double tConvert = 0.0;
+	int tag = 0;
 
 	do {
-		oldCodeLength = network.CodeLength();
 
+		oldCodeLength = network.CodeLength();
 		stop = false;
 
 		gettimeofday(&convert_T1, NULL);
-		network.convertModulesToSuperNodes(numTh);
+		network.convertModulesToSuperNodes(tag);
+		tag++;
 		gettimeofday(&convert_T2, NULL);
 
 		tConvert += elapsedTimeInSec(convert_T1, convert_T2);
@@ -448,9 +463,11 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			double innerOldCodeLength = network.CodeLength();
 
 			if (numTh == 1) {
-				if (prior)
-					numMoved = network.prioritize_moveSPnodes(vThresh);
-				else
+				if (prior) {
+					printf("before ouch, numberMoved:%d\n", numMoved);
+					numMoved = network.prioritize_moveSPnodes(vThresh, spIter);
+					printf("ouch, numberMoved:%d\n", numMoved);
+				} else
 					numMoved = network.moveSuperNodes();
 			} else {
 				if (prior)
@@ -462,6 +479,10 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			}
 
 			spIter++;
+
+			printf(
+					"the old codelength in superNode is:%f, the new codeLength in superNode is:%f, the iteration:%d\n",
+					innerOldCodeLength, network.CodeLength(), spIter);
 
 			if (innerOldCodeLength - network.CodeLength() >= 0.0
 					&& (innerOldCodeLength - network.CodeLength()) / log(2.0)
