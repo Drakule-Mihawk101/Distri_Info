@@ -214,6 +214,8 @@ public:
 
 	// other Member functions ...
 	void findDanglingNodes();
+	// display output
+	void showOutput(int iteration, int prioritizeSPMove);
 	//void initiate();
 	void initiate(int numTh);
 	//void calculateSteadyState();	// eigenvector();
@@ -224,7 +226,7 @@ public:
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
 	int moveSuperNodes();
-	int prioritize_moveSPnodes(double vThresh, int iteration);
+	int prioritize_moveSPnodes(double vThresh, int iteration, int first, int tag);
 	int parallelMoveSuperNodes(int numTh, double & tUpdate);
 	int prioritize_parallelMoveSPnodes(int numTh, double & tUpdate,
 			double vThresh);
