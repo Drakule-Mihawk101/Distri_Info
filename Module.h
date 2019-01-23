@@ -215,14 +215,14 @@ public:
 	// other Member functions ...
 	void findDanglingNodes();
 	// display output
-	void showOutput(int iteration, int prioritizeSPMove);
+	void showOutput(int iteration, int prioritizeSPMove, bool inWhile);
 	//void initiate();
 	void initiate(int numTh);
 	//void calculateSteadyState();	// eigenvector();
 	void calculateSteadyState(int numTh);	// eigenvector();
 	void calibrate(int numTh);
 	int move();
-	int prioritize_move(double vThresh, int iteration);
+	int prioritize_move(double vThresh, int iteration, bool inWhile);
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
 	int moveSuperNodes();

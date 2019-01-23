@@ -31,7 +31,8 @@ unsigned stou(char *s) {
 }
 
 void stochastic_greedy_partition(Network &network, int numTh, double threshold,
-		double vThresh, int maxIter, bool prior, bool fineTune, bool fast);
+		double vThresh, int maxIter, bool prior, bool fineTune, bool fast,
+		bool inLoop);
 void partition_module_network(Network &network, int numTh, double threshold,
 		int maxIter, bool fast);
 void generate_sub_modules(Network &network, int numTh, double threshold,
@@ -210,7 +211,7 @@ int main(int argc, char *argv[]) {
 	double oldCodeLength = origNetwork.CodeLength();
 
 	stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
-			maxIter, prior, fineTune, true);
+			maxIter, prior, fineTune, fast, false);
 	cout << "SuperStep [" << step << "] - codeLength = "
 			<< origNetwork.CodeLength() / log(2.0) << " in "
 			<< origNetwork.NModule() << " modules." << endl;
@@ -231,7 +232,7 @@ int main(int argc, char *argv[]) {
 		oldCodeLength = origNetwork.CodeLength();
 
 		stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
-				maxIter, prior, fineTune, false);
+				maxIter, prior, fineTune, fast, true);
 
 		step++;
 		cout << "SuperStep [" << step << "] - codeLength = "
@@ -302,7 +303,8 @@ int main(int argc, char *argv[]) {
  *	The 1) procedure is implemented in Network::move() function.
  */
 void stochastic_greedy_partition(Network &network, int numTh, double threshold,
-		double vThresh, int maxIter, bool prior, bool fineTune, bool fast) {
+		double vThresh, int maxIter, bool prior, bool fineTune, bool fast,
+		bool inLoop) {
 
 	double oldCodeLength = network.CodeLength();
 	int iter = 0;
@@ -344,49 +346,38 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		if (fineTune) {
 			if (numTh == 1) {
 				if (prior) {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
-					numMoved = network.prioritize_move(vThresh, iter);
-					network.showOutput(iter, 0);
+					numMoved = network.prioritize_move(vThresh, iter, inLoop);
+					if (inLoop) {
+						printf(
+								"number of moves for rank:%d is:%d in prioritize_move, iter:%d\n",
+								numMoved, rank, iter);
+					}
+					network.showOutput(iter, 0, inLoop);
 				} else {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.move();
 				}
 			} else {
 				if (prior) {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.prioritize_parallelMove(numTh,
 							tSequential, vThresh);
 				} else {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.parallelMove(numTh, tSequential);
 				}
 			}
 		} else {
 			if (numTh == 1) {
 				if (prior) {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					first = 2;
 					numMoved = network.prioritize_moveSPnodes(vThresh, iter,
 							first, 100);
 				} else {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.moveSuperNodes();// If at least one node is moved, return true. Otherwise, return false.
 				}
 			} else {
 				if (prior) {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
 							tSequential, vThresh);
 				} else {
-					//printf("fineTune:%d, numTh:%d,prior:%d, iter:%d\n",
-					//fineTune, numTh, prior, iter);
 					numMoved = network.parallelMoveSuperNodes(numTh,
 							tSequential);
 				}
@@ -394,12 +385,11 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		}
 		iter++;
 
-		//printf(
-		//	"the old codelength is:%f, the new codeLength is:%f, the iteration:%d\n",
-		//oldCodeLength, network.CodeLength(), iter);
-
-		//printf("after %d iteration, the value of the modules for rank:%d\n",
-		//iter, rank);
+		if (inLoop == false) {
+			printf(
+					"the old codelength for rank:%d, is:%f, the new codeLength is:%f, the iteration:%d\n",
+					rank, oldCodeLength, network.CodeLength(), iter);
+		}
 
 		if (((oldCodeLength - network.CodeLength() >= 0
 				&& (oldCodeLength - network.CodeLength()) / log(2.0) < threshold))) {
@@ -478,7 +468,12 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 					//printf("before ouch, numberMoved:%d\n", numMoved);
 					numMoved = network.prioritize_moveSPnodes(vThresh, spIter,
 							first, tag);
-					network.showOutput(spIter, 1);
+					if (inLoop) {
+						printf(
+								"number of moves for rank:%d is :%d in prioritize_moveSPnodes, spIter:%d\n",
+								numMoved, rank, spIter);
+					}
+					network.showOutput(spIter, 1, inLoop);
 				} else
 					numMoved = network.moveSuperNodes();
 			} else {
@@ -492,10 +487,11 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 			spIter++;
 
-			printf(
-					"the old codelength for rank:%d, in superNode is:%f, the new codeLength in superNode is:%f, the iteration:%d\n",
-					rank, innerOldCodeLength, network.CodeLength(), spIter);
-
+			if (inLoop == false) {
+				printf(
+						"the old codelength for rank:%d, in superNode is:%f, the new codeLength in superNode is:%f, the iteration:%d\n",
+						rank, innerOldCodeLength, network.CodeLength(), spIter);
+			}
 			if (innerOldCodeLength - network.CodeLength() >= 0.0
 					&& (innerOldCodeLength - network.CodeLength()) / log(2.0)
 							< threshold) {
