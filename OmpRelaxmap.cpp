@@ -21,8 +21,6 @@
 #include "FileIO.h"
 #include "timing.h"
 #include <mpi.h>
-//#include <stdexcept>
-//#include "segvcatch.h"
 
 using namespace std;
 
@@ -210,12 +208,18 @@ int main(int argc, char *argv[]) {
 	// Initial SuperStep running ...
 	double oldCodeLength = origNetwork.CodeLength();
 
+	double q = origNetwork.calculateModularityScore();
+	printf("very first modularity score output for rank:%d, modularity:%f\n",
+			rank, q);
+
 	stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
 			maxIter, prior, fineTune, fast, false);
 	cout << "SuperStep [" << step << "] - codeLength = "
 			<< origNetwork.CodeLength() / log(2.0) << " in "
 			<< origNetwork.NModule() << " modules." << endl;
 
+	q = origNetwork.calculateModularityScore();
+	printf("modularity score output for rank:%d, modularity:%f\n", rank, q);
 	bool nextIter = true;
 
 	if ((oldCodeLength - origNetwork.CodeLength()) / log(2.0) < threshold) {
@@ -267,6 +271,9 @@ int main(int argc, char *argv[]) {
 
 	gettimeofday(&noIOend, NULL);
 	gettimeofday(&allEnd, NULL);
+	q = origNetwork.calculateModularityScore();
+	printf("very last modularity score output for rank:%d, modularity:%f\n",
+			rank, q);
 	cout << "Overall Elapsed Time for Module Detection (w/o file IO): "
 			<< elapsedTimeInSec(noIOstart, noIOend) << " (sec)" << endl;
 	cout << "Overall Elapsed Time for Module Detection (w/ file Reading): "
@@ -352,7 +359,7 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 								"number of moves for rank:%d is:%d in prioritize_move, iter:%d\n",
 								numMoved, rank, iter);
 					}
-					network.showOutput(iter, 0, inLoop);
+					//network.showOutput(iter, 0, inLoop);
 				} else {
 					numMoved = network.move();
 				}
@@ -473,7 +480,7 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 								"number of moves for rank:%d is :%d in prioritize_moveSPnodes, spIter:%d\n",
 								numMoved, rank, spIter);
 					}
-					network.showOutput(spIter, 1, inLoop);
+					//network.showOutput(spIter, 1, inLoop);
 				} else
 					numMoved = network.moveSuperNodes();
 			} else {
