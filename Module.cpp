@@ -1022,6 +1022,13 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		randomGlobalArray[i] = activeNodes[i];
 	}
 
+	for (int i = 0; i < nActive; i++) {
+		int target = R->randInt(nActive - 1);
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[i];
+		randomGlobalArray[i] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
+	}
 	int start, end;
 	findAssignedPart(&start, &end, nActive, size, rank);
 
@@ -2509,8 +2516,14 @@ int Network::prioritize_moveSPnodes(double vThresh, int iteration, int first,
 
 	for (int i = 0; i < nActive; i++) {
 		randomGlobalArray[i] = activeNodes[i];
-		printf("runk:%d,activeNodes[%d]:%d, randomGlobalArray[%d]:%d\n", rank,
-				i, activeNodes[i], i, randomGlobalArray[i]);
+	}
+
+	for (int i = 0; i < nActive; i++) {
+		int target = R->randInt(nActive - 1);
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[i];
+		randomGlobalArray[i] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
 	}
 
 // Generate random sequential order of active nodes.
