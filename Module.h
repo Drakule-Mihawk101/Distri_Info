@@ -227,13 +227,13 @@ public:
 	//void calculateSteadyState();	// eigenvector();
 	void calculateSteadyState(int numTh);	// eigenvector();
 	void calibrate(int numTh);
-	int move();
+	int move(int iteration);
 	int prioritize_move(double vThresh, int iteration, bool inWhile);
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
-	int moveSuperNodes();
-	int prioritize_moveSPnodes(double vThresh, int iteration, int first,
-			int tag);
+	int moveSuperNodes(int iteration);
+	int prioritize_moveSPnodes(double vThresh, int tag, int iteration,
+			bool inWhile);
 	int parallelMoveSuperNodes(int numTh, double & tUpdate);
 	int prioritize_parallelMoveSPnodes(int numTh, double & tUpdate,
 			double vThresh);

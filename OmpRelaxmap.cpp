@@ -208,18 +208,14 @@ int main(int argc, char *argv[]) {
 	// Initial SuperStep running ...
 	double oldCodeLength = origNetwork.CodeLength();
 
-	double q = origNetwork.calculateModularityScore();
-	printf("very first modularity score output for rank:%d, modularity:%f\n",
-			rank, q);
-
+	printf("original network for rank:%d with size:%d\n", rank,
+			origNetwork.superNodes.size());
 	stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
 			maxIter, prior, fineTune, fast, false);
 	cout << "SuperStep [" << step << "] - codeLength = "
 			<< origNetwork.CodeLength() / log(2.0) << " in "
 			<< origNetwork.NModule() << " modules." << endl;
 
-	q = origNetwork.calculateModularityScore();
-	printf("modularity score output for rank:%d, modularity:%f\n", rank, q);
 	bool nextIter = true;
 
 	if ((oldCodeLength - origNetwork.CodeLength()) / log(2.0) < threshold) {
@@ -235,6 +231,8 @@ int main(int argc, char *argv[]) {
 
 		oldCodeLength = origNetwork.CodeLength();
 
+		printf("original network for rank:%d with size:%d, nextIter\n", rank,
+				origNetwork.superNodes.size());
 		stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
 				maxIter, prior, fineTune, fast, true);
 
@@ -271,9 +269,7 @@ int main(int argc, char *argv[]) {
 
 	gettimeofday(&noIOend, NULL);
 	gettimeofday(&allEnd, NULL);
-	q = origNetwork.calculateModularityScore();
-	printf("very last modularity score output for rank:%d, modularity:%f\n",
-			rank, q);
+
 	cout << "Overall Elapsed Time for Module Detection (w/o file IO): "
 			<< elapsedTimeInSec(noIOstart, noIOend) << " (sec)" << endl;
 	cout << "Overall Elapsed Time for Module Detection (w/ file Reading): "
@@ -317,6 +313,7 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	int iter = 0;
 	bool stop = false;
 	int rank, size;
+	int tag = 0; //this tag is to track the call of prioritize_moveSPNode from while loop or do-while loop
 
 	int first = 0;
 
@@ -333,6 +330,10 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	gettimeofday(&outer_T1, NULL);
 
 	int nActiveUnits = (fineTune) ? network.NNode() : network.superNodes.size();
+	printf(
+			"tow for rank:%d, fineTune:%d, nActiveUnits:%d, network.nNode:%d, network.superNodes.size():%d\n",
+			rank, fineTune, nActiveUnits, network.NNode(),
+			network.superNodes.size());
 	cout << nActiveUnits << ", ";
 
 	// set initial active nodes list ...
@@ -356,12 +357,12 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 					numMoved = network.prioritize_move(vThresh, iter, inLoop);
 					if (inLoop) {
 						printf(
-								"number of moves for rank:%d is:%d in prioritize_move, iter:%d\n",
-								numMoved, rank, iter);
+								"tow for rank:%d in prioritize_move ended, iter:%d, network.superNodes.size():%d\n",
+								rank, iter, network.superNodes.size());
 					}
 					//network.showOutput(iter, 0, inLoop);
 				} else {
-					numMoved = network.move();
+					numMoved = network.move(iter);
 				}
 			} else {
 				if (prior) {
@@ -374,17 +375,28 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		} else {
 			if (numTh == 1) {
 				if (prior) {
-					first = 2;
-					numMoved = network.prioritize_moveSPnodes(vThresh, iter,
-							first, 100);
+					printf(
+							"tow for rank:%d, fine tune false, prioritize moveSPnodes, number of SuperNodes:%d\n",
+							rank, network.superNodes.size());
+					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
+							iter, inLoop);
 				} else {
-					numMoved = network.moveSuperNodes();// If at least one node is moved, return true. Otherwise, return false.
+					printf(
+							"tow for rank:%d, fine tune false, moveSuperNodes:%d\n",
+							rank, network.superNodes.size());
+					numMoved = network.moveSuperNodes(iter);// If at least one node is moved, return true. Otherwise, return false.
 				}
 			} else {
 				if (prior) {
+					printf(
+							"tow for rank:%d, fine tune false prioritize_parallelMoveSPnodes:%d\n",
+							rank, network.superNodes.size());
 					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
 							tSequential, vThresh);
 				} else {
+					printf(
+							"tow for rank:%d, fine tune false parallelMoveSuperNodes:%d\n",
+							rank, network.superNodes.size());
 					numMoved = network.parallelMoveSuperNodes(numTh,
 							tSequential);
 				}
@@ -426,6 +438,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 	network.updateMembersInModule();
 
+	printf("updating number of modules for rank:%d\n", rank);
+
 	gettimeofday(&seq_T2, NULL);
 	tSequential += elapsedTimeInSec(seq_T1, seq_T2);
 
@@ -433,21 +447,27 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		return;
 
 	double tConvert = 0.0;
-	int tag = 0;
 
 	do {
 
 		oldCodeLength = network.CodeLength();
 		stop = false;
 
+		printf(
+				"before converting modules to super node for rank:%d, and iteration:%d\n",
+				rank, tag);
+
 		gettimeofday(&convert_T1, NULL);
 		//printf("1hello\n");
 		network.convertModulesToSuperNodes(tag);
 
+		printf(
+				"after converting modules to super node for rank:%d, and iteration:%d\n",
+				rank, tag);
+
 		//network.showOutput(tag, 0);
 
 		//printf("9hello\n");
-		tag++;
 		gettimeofday(&convert_T2, NULL);
 
 		tConvert += elapsedTimeInSec(convert_T1, convert_T2);
@@ -471,18 +491,17 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 			if (numTh == 1) {
 				if (prior) {
-					first = 1;
 					//printf("before ouch, numberMoved:%d\n", numMoved);
-					numMoved = network.prioritize_moveSPnodes(vThresh, spIter,
-							first, tag);
+					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
+							spIter, inLoop);
 					if (inLoop) {
 						printf(
-								"number of moves for rank:%d is :%d in prioritize_moveSPnodes, spIter:%d\n",
-								numMoved, rank, spIter);
+								"tow for rank:%d, prioritize_moveSPnodes in do-while network.superNodes.size():%d\n",
+								rank, network.superNodes.size());
 					}
 					//network.showOutput(spIter, 1, inLoop);
 				} else
-					numMoved = network.moveSuperNodes();
+					numMoved = network.moveSuperNodes(spIter);
 			} else {
 				if (prior)
 					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
@@ -524,6 +543,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 		outerLoop++;
 
+		tag++;
+
 		gettimeofday(&seq_T2, NULL);
 		tSequential += elapsedTimeInSec(seq_T1, seq_T2);
 
@@ -549,17 +570,24 @@ void partition_module_network(Network &network, int numTh, double threshold,
 	double oldCodeLength = network.CodeLength();
 	int iter = 0;
 	bool stop = false;
+	int size;
+	int rank;
 
 	double tSequential;
 
 	int numMoved = 0;
 
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
 	while (!stop && iter < maxIter) {
 		oldCodeLength = network.CodeLength();
 
 		if (numTh == 1) {
-			numMoved = network.move();
+			printf("tow for rank:%d, network.move 1\n", rank);
+			numMoved = network.move(iter);
 		} else {
+			printf("tow for rank:%d, network.parallelMove 1\n", rank);
 			numMoved = network.parallelMove(numTh, tSequential);
 		}
 
@@ -570,6 +598,8 @@ void partition_module_network(Network &network, int numTh, double threshold,
 	}
 
 	int outerLoop = 1;
+
+	printf("tow for rank:%d, updateMembers 1\n", rank);
 
 	network.updateMembersInModule();
 
@@ -589,8 +619,11 @@ void partition_module_network(Network &network, int numTh, double threshold,
 			double innerOldCodeLength = network.CodeLength();
 
 			if (numTh == 1) {
-				numMoved = network.moveSuperNodes();
+				printf("tow for rank:%d, network.moveSuperNodes 2\n", rank);
+				numMoved = network.moveSuperNodes(spIter);
 			} else {
+				printf("tow for rank:%d, network.parallelMoveSuperNodes 2\n",
+						rank);
 				numMoved = network.parallelMoveSuperNodes(numTh, tSequential);
 			}
 
@@ -601,6 +634,7 @@ void partition_module_network(Network &network, int numTh, double threshold,
 				stop = true;
 		}
 
+		printf("tow for rank:%d, updateMembersInModule 2\n", rank);
 		network.updateMembersInModule();
 
 		outerLoop++;
