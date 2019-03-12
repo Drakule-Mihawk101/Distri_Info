@@ -180,36 +180,22 @@ void Network::initiate(int numTh) {
 
 	struct timeval startT, endT;
 
-	omp_set_num_threads(numTh);
-
 	gettimeofday(&startT, NULL);
 
-#pragma omp parallel reduction (+:nDangNodes)
-	{
-		int myID = omp_get_thread_num();
-		int nTh = omp_get_num_threads();
-
-		int start, end;
-		findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		for (int i = start; i < end; i++) {
-			if (nodes[i].outLinks.empty()) {
-#pragma omp critical (updateDang)
-				{
-					danglings.push_back(i);
-				}
-				nDangNodes++;
-				nodes[i].setIsDangling(true);
-			} else {	// normal nodes. --> Normalize edge weights.
-				int nOutLinks = nodes[i].outLinks.size();
-				//double sum = nodes[i].selfLink;	// don't support selfLink yet.
-				double sum = 0.0;
-				for (int j = 0; j < nOutLinks; j++)
-					sum += nodes[i].outLinks[j].second;
-
-				//nodes[i].selfLink /= sum;
-				for (int j = 0; j < nOutLinks; j++)
-					nodes[i].outLinks[j].second /= sum;
+	for (int i = 0; i < nNode; i++) {
+		if (nodes[i].outLinks.empty()) {
+			danglings.push_back(i);
+			nDangNodes++;
+			nodes[i].setIsDangling(true);
+		} else {	// normal nodes. --> Normalize edge weights.
+			int nOutLinks = nodes[i].outLinks.size();
+			//double sum = nodes[i].selfLink;	// don't support selfLink yet.
+			double sum = 0.0;
+			for (int j = 0; j < nOutLinks; j++) {
+				sum += nodes[i].outLinks[j].second;
+			}
+			for (int j = 0; j < nOutLinks; j++) {
+				nodes[i].outLinks[j].second /= sum;
 			}
 		}
 	}
@@ -232,25 +218,15 @@ void Network::initiate(int numTh) {
 	gettimeofday(&startT, NULL);
 
 	// Update edges to represent flow based on calculated steady state (aka size).
-#pragma omp parallel
-	{
-		int myID = omp_get_thread_num();
-		int nTh = omp_get_num_threads();
-
-		int start, end;
-		findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		for (int i = start; i < end; i++) {
-
-			if (!nodes[i].IsDangling()) {
-				int nOutLinks = nodes[i].outLinks.size();
-				for (int j = 0; j < nOutLinks; j++) {
-					nodes[i].outLinks[j].second = nodes[i].Size()
-							* nodes[i].outLinks[j].second;
-				}
-			} else {
-				nodes[i].setDanglingSize(nodes[i].Size());
+	for (int i = 0; i < nNode; i++) {
+		if (!nodes[i].IsDangling()) {
+			int nOutLinks = nodes[i].outLinks.size();
+			for (int j = 0; j < nOutLinks; j++) {
+				nodes[i].outLinks[j].second = nodes[i].Size()
+						* nodes[i].outLinks[j].second;
 			}
+		} else {
+			nodes[i].setDanglingSize(nodes[i].Size());
 		}
 	}
 
@@ -259,76 +235,45 @@ void Network::initiate(int numTh) {
 			<< elapsedTimeInSec(startT, endT) << " (sec)" << endl;
 
 	// Calculate SUM of p_log_p over all nodes.
-	double allNds_log_allNds = 0.0;
-	double allNds_log_allNds_s = 0.0;
-
-	/*#pragma omp parallel reduction (+:allNds_log_allNds)
-	 {
-	 int myID = omp_get_thread_num();
-	 int nTh = omp_get_num_threads();
-
-	 int start, end;
-	 findAssignedPart(&start, &end, nNode, nTh, myID);
-
-	 for (int i = start; i < end; i++)
-	 allNds_log_allNds += pLogP(nodes[i].Size());
-	 }*/
+	int tag = 99999977;
+	double allNds_log_allNds_send = 0.0;
+	double allNds_log_allNds_recv = 0.0;
 
 	int start, end;
 	findAssignedPart(&start, &end, nNode, size, rank);
 
 	for (int i = start; i < end; i++) {
-		allNds_log_allNds_s += pLogP(nodes[i].Size());
-	}
-	if (rank != 0) {
-		MPI_Send(&allNds_log_allNds_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+		allNds_log_allNds_send += pLogP(nodes[i].Size());
 	}
 
-	if (rank == 0) {
-		allNds_log_allNds = allNds_log_allNds_s;
-		for (int prId = 1; prId < size; prId++) {
-			MPI_Recv(&allNds_log_allNds_s, 1, MPI_DOUBLE, prId, 0,
-			MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-			allNds_log_allNds += allNds_log_allNds_s;
-		}
-		for (int prId = 1; prId < size; prId++) {
-			MPI_Send(&allNds_log_allNds, 1, MPI_DOUBLE, prId, 0,
-			MPI_COMM_WORLD);
+	allNodes_log_allNodes = allNds_log_allNds_send;
 
+	for (int processId = 0; processId < size; processId++) {
+		if (processId != rank) {
+			MPI_Sendrecv(&allNds_log_allNds_send, 1, MPI_DOUBLE, processId, tag,
+					&allNds_log_allNds_recv, 1,
+					MPI_DOUBLE, processId, tag,
+					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			allNodes_log_allNodes += allNds_log_allNds_recv;
 		}
 	}
-
-	if (rank != 0) {
-		MPI_Recv(&allNds_log_allNds, 1, MPI_DOUBLE, 0, 0,
-		MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-	}
-
-	allNodes_log_allNodes = allNds_log_allNds;
 
 	/////////////////////////////
 	// Make modules from nodes //
 	/////////////////////////////
-	/*#pragma omp parallel
-	 {*/
-	int myID = omp_get_thread_num();
-	int nTh = omp_get_num_threads();
 
-	findAssignedPart(&start, &end, nNode, nTh, myID);
-
-	for (int i = start; i < end; i++) {
-		modules[i] = Module(i, &nodes[i]);// Assign each Node to a corresponding Module object.
-										  // Initially, each node is in its own module.
+	for (int i = 0; i < nNode; i++) {
+		modules[i] = Module(i, &nodes[i]);// Assign each Node to a corresponding Module object. Initially, each node is in its own module.
 		nodes[i].setModIdx(i);
 	}
-	//}
 
 	nModule = nNode;
 
 	gettimeofday(&startT, NULL);
-	calibrate(numTh);
+	calibrate(numTh, 0); //sending tag 0 to indicate the calibrate call from initiate function
 	gettimeofday(&endT, NULL);
-	cout << "Time for calculating of initial code length: "
-			<< elapsedTimeInSec(startT, endT) << " (sec)" << endl;
+	printf("Time for calculating initial code length in rank:%d is %f\n", rank,
+			elapsedTimeInSec(startT, endT));
 
 }
 
@@ -339,211 +284,56 @@ void Network::initiate(int numTh) {
 void Network::calculateSteadyState(int numTh) {
 	// initial probability distribution = 1 / N.
 
-	MPI_Request request;
-	//cout << "inside calculate steady state" << endl;
 	int size;
 	int rank;
-	int iteration = 0;
+	int tag = 99999999;
 
 	vector<double> size_tmp = vector<double>(nNode, 1.0 / nNode);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	//cout << "sizeof dangling:" << danglings.size() << endl;
-
-	/*for (int i = 0; i < danglings.size(); i++)
-	 cout << "rank: " << rank << " danglings:" << danglings[i] << endl;*/
-
-	//cout << "inside calculate steady state 1" << endl;
-	/*struct data {
-	 int start;
-	 int end;
-	 double danglingsz;
-	 };
-
-	 data chunkobject;
-	 MPI_Datatype chunktype;
-	 int structlen = 3;
-	 int blocklengths[structlen];
-	 MPI_Datatype types[structlen];
-	 MPI_Aint displacements[structlen];
-	 // where are the components relative to the structure?
-	 blocklengths[0] = 1;
-	 types[0] = MPI_INT;
-	 displacements[0] = (size_t) &(chunkobject.start) - (size_t) &chunkobject;
-	 blocklengths[1] = 1;
-	 types[1] = MPI_INT;
-	 displacements[1] = (size_t) &(chunkobject.end) - (size_t) &chunkobject;
-	 blocklengths[2] = 1;
-	 types[2] = MPI_DOUBLE;
-	 displacements[2] = (size_t) &(chunkobject.danglingsz)
-	 - (size_t) &chunkobject;
-
-	 MPI_Type_create_struct(structlen, blocklengths, displacements, types,
-	 &chunktype);
-	 MPI_Type_commit(&chunktype);
-	 {
-	 MPI_Aint typesize;
-	 MPI_Type_extent(chunktype, &typesize);
-	 if (rank == 0)
-	 printf("Type extent: %d bytes\n", typesize);
-	 }*/
-
 	int iter = 0;
 	double danglingSize = 0.0;
 	double sqdiff = 1.0;
 	double sum = 0.0;
-	double sum_s = 0.0;
-	double danglingsz = 0.0;
+	double sum_send = 0.0;
+	double sum_recv = 0.0;
+	double danglingsz_send = 0.0;
+	double danglingsz_recv = 0.0;
 	int value = 0;
-	// Generate addedSize array per each thread, so that we don't need to use lock for each nodeSize addition.
-
-	/*
-	 double** addedSize = new double*[numTh];
-	 for (int i = 0; i < numTh; i++)
-	 addedSize[i] = new double[nNode];
-	 */
 
 	do {
-
 		// calculate sum of the size of dangling nodes.
-		iteration++;
 		danglingSize = 0.0;
-		danglingsz = 0.0;
 		int start, end, id;
 		findAssignedPart(&start, &end, nDanglings, size, rank);
-		// assign dangling array computation to itself rank=0 process
+
 		for (int i = start; i < end; i++) {
-			/*cout << "i:" << i << " danglings[i]: " << danglings[i] << " rank"
-			 << rank << " size_tmp[danglings[i]]: "
-			 << size_tmp[danglings[i]] << " iteration number: "
-			 << iteration << endl;*/
-			danglingsz += size_tmp[danglings[i]];
+			danglingsz_send += size_tmp[danglings[i]];
 		}
-		if (rank != 0) {
-			MPI_Send(&danglingsz, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-		}
-		if (rank == 0) {
-			danglingSize += danglingsz;
-			for (int prId = 1; prId < size; prId++) {
-				MPI_Recv(&danglingsz, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD,
-				MPI_STATUSES_IGNORE);
-				danglingSize += danglingsz;
-			}
-			//cout << "final summed up dangling value:" << danglingSize << endl;
-			//we need to send the value of danglingSize to all of the process back again so that they have the updated value
-			for (int prId = 1; prId < size; prId++) {
-				/*cout << "before sending from:" << prId << " value of dangling:"
-				 << danglingSize << endl;*/
-				MPI_Send(&danglingSize, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
+
+		danglingSize = danglingsz_send;
+
+		for (int processId = 0; processId < size; processId++) {
+			if (processId != rank) {
+				MPI_Sendrecv(&danglingsz_send, 1, MPI_DOUBLE, processId,
+						(tag + iter), &danglingsz_recv, 1,
+						MPI_DOUBLE, processId, (tag + iter),
+						MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				danglingSize += danglingsz_recv;
 			}
 		}
-
-		if (rank != 0) {
-			danglingSize = 0.0;
-			MPI_Recv(&danglingSize, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
-			MPI_STATUSES_IGNORE);
-			/*cout << "danglingSize value: " << danglingSize << " rank:" << rank
-			 << endl;*/
-		}
-
-		/*		// calculate sum of the size of dangling nodes.
-		 #pragma omp parallel reduction (+:danglingSize)
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
-
-		 int start, end;
-		 findAssignedPart(&start, &end, nDanglings, nTh, myID);
-
-		 for (int i = start; i < end; i++) {
-		 cout << "i:" << i << " danglings[i]: " << danglings[i]
-		 << " rank" << rank << " size_tmp[danglings[i]]: "
-		 << size_tmp[danglings[i]] << " iteration number: "
-		 << iteration << endl;
-		 danglingSize += size_tmp[danglings[i]];
-		 }
-		 }
-		 cout << "final summed up dangling value:" << danglingSize << endl;*/
 
 		// flow via teleportation.
-		// faysal: I think in the following block I do not need to call findAssignedPart again
-		//faysal: I need to send update of the node vector back to all of the process, but I did not do that, what I did, I just made all the process to update the nodes vector
-//#pragma omp parallel
-		{
-			//int myID = omp_get_thread_num();
-			//int nTh = omp_get_num_threads();
-
-			//int start, end;
-			//findAssignedPart(&start, &end, nNode, nTh, myID);
-
-			for (int i = 0; i < nodes.size(); i++) {
-				nodes[i].setSize(
-						(alpha + beta * danglingSize)
-								* nodes[i].TeleportWeight());//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
-								//size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
-			}
+		for (int i = 0; i < nodes.size(); i++) {
+			nodes[i].setSize(
+					(alpha + beta * danglingSize) * nodes[i].TeleportWeight()); //alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
+							//size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
 		}
 
-		/*		for (int i = start; i < end; i++) {
-		 nodes[i].setSize(
-		 (alpha + beta * danglingSize) * nodes[i].TeleportWeight());	//alpha is 0.15, beta is 1-0.15 or 0.85, teleportation weight is individual nodeweight/totalNodeweight,
-		 //size is p_alpha, hence (0.15+0.85*danglingsize)*nodes[i].TeleportWeight()
-		 }*/
-
-		/*int realNumTh = 0;
-
-		 // flow from network steps via following edges.
-		 #pragma omp parallel
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
-
-		 #pragma omp master
-		 {
-		 realNumTh = nTh;
-		 }
-
-		 //here instead of myID I am using rank
-
-		 double *myAddedSize = addedSize[rank];
-		 for (int i = 0; i < nNode; i++)
-		 myAddedSize[i] = 0.0;// initialize for the temporary addedSize array.
-
-		 int start, end;
-		 findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		 // here instead of a part, I am putting the size of nNode here
-		 for (int i = start; i < end; i++) {
-		 int nOutLinks = nodes[i].outLinks.size();
-		 for (int j = 0; j < nOutLinks; j++) {
-		 myAddedSize[nodes[i].outLinks[j].first] += beta
-		 * nodes[i].outLinks[j].second * size_tmp[i];//0.85*nodes[i].outlinks[j].weight*(1/nNodes)
-
-		 }
-		 }
-		 }
-		 //set nodes[i].size by added addedSize[] values.
-		 #pragma omp parallel
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
-
-		 int start, end;
-		 findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		 for (int i = start; i < end; i++) {
-		 for (int j = 0; j < realNumTh; j++)
-		 nodes[i].addSize(addedSize[j][i]);
-		 }
-		 }
-		 */
-
-		//I am using myAddedSize array where each and every process will have its' own copy
-		//double myAddedSize = new double[nNode];
+		// flow from network steps via following edges.
 		for (int i = 0; i < nNode; i++) {
-			//myAddedSize[i] = 0.0;	//initialize the temporary addedSize array
 			int nOutLinks = nodes[i].outLinks.size();
 			for (int j = 0; j < nOutLinks; j++) {
 				nodes[nodes[i].outLinks[j].first].addSize(
@@ -552,64 +342,29 @@ void Network::calculateSteadyState(int numTh) {
 		}
 
 		// Normalize of node size.
-		sum = 0.0;
-		sum_s = 0.0;
-		/*
-		 #pragma omp parallel reduction (+:sum)
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
 
-		 int start, end;
-		 findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		 for (int i = start; i < end; i++)
-		 sum += nodes[i].Size();
-		 }
-		 */
+		double sum = 0.0;
+		double sum_send = 0.0;
+		double sum_recv = 0.0;
 
 		findAssignedPart(&start, &end, nNode, size, rank);
 		for (int i = start; i < end; i++) {
-			sum_s += nodes[i].Size();
-		}
-		if (rank != 0) {
-			MPI_Send(&sum_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+			sum_send += nodes[i].Size();
 		}
 
-		if (rank == 0) {
-			sum = sum_s;
-			for (int prId = 1; prId < size; prId++) {
-				MPI_Recv(&sum_s, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD,
-				MPI_STATUSES_IGNORE);
-				sum += sum_s;
-			}
-			for (int prId = 1; prId < size; prId++) {
-				MPI_Send(&sum, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
+		sum = sum_send;
+
+		for (int processId = 0; processId < size; processId++) {
+			if (processId != rank) {
+				MPI_Sendrecv(&sum_send, 1, MPI_DOUBLE, processId,
+						(tag + 2 * iter), &sum_recv, 1,
+						MPI_DOUBLE, processId, (tag + 2 * iter),
+						MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+				sum += sum_recv;
 			}
 		}
 
-		if (rank != 0) {
-			MPI_Recv(&sum, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD,
-			MPI_STATUSES_IGNORE);
-		}
-
-		/*cout << "final value of sum:" << sum << " iteration:" << iteration
-		 << endl;*/
 		sqdiff = 0.0;
-		/*#pragma omp parallel reduction (+:sqdiff)
-		 {
-		 int myID = omp_get_thread_num();
-		 int nTh = omp_get_num_threads();
-
-		 int start, end;
-		 findAssignedPart(&start, &end, nNode, nTh, myID);
-
-		 for (int i = start; i < end; i++) {
-		 nodes[i].setSize(nodes[i].Size() / sum);
-		 sqdiff += fabs(nodes[i].Size() - size_tmp[i]);
-		 size_tmp[i] = nodes[i].Size();
-		 }
-		 }*/
 
 		for (int i = 0; i < nNode; i++) {
 			nodes[i].setSize(nodes[i].Size() / sum);
@@ -621,29 +376,13 @@ void Network::calculateSteadyState(int numTh) {
 
 	} while ((iter < 200) && (sqdiff > 1.0e-15 || iter < 50));
 
-	/*	// deallocate 2D array.
-	 for (int i = 0; i < numTh; i++)
-	 delete[] addedSize[i];
-	 delete[] addedSize;*/
-
 	cout << "Calculating flow done in " << iter << " iterations!" << endl;
-
 }
 
 // This function calculate current codeLength.
 // This implementation is modified version of infomap implementation.
-void Network::calibrate(int numTh) {
+void Network::calibrate(int numTh, int tag) {
 	//This is the calculation of Equation (4) in the paper.
-
-	/*	int size;
-	 int rank;
-
-	 MPI_Comm_size(MPI_COMM_WORLD, &size);
-	 MPI_Comm_rank(MPI_COMM_WORLD, &rank);*/
-
-	/*double *data = new double[3];
-	 double *data_s = new double[3];
-	 */
 
 	int size;
 	int rank;
@@ -651,118 +390,54 @@ void Network::calibrate(int numTh) {
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	struct timeval startT, endT;
+
+	gettimeofday(&startT, NULL);
+
+	double send_exit_stay_sum[3] = { 0.0, 0.0, 0.0 };
+	double receive_exit_stay_sum[3] = { 0.0, 0.0, 0.0 };
+
 	double sum_exit_log_exit = 0.0;
 	double sum_stay_log_stay = 0.0;
 	double sumExit = 0.0;
 
-	/*
-	 double sum_exit_log_exit_s = 0.0;
-	 double sum_stay_log_stay_s = 0.0;
-	 double sumExit_s = 0.0;
-	 */
-
-	omp_set_num_threads(numTh);
-//#pragma omp parallel reduction (+:sum_exit_log_exit, sum_stay_log_stay, sumExit)
-	//{
-	int myID = omp_get_thread_num();
-	int nTh = omp_get_num_threads();
-
 	int start, end;
-	findAssignedPart(&start, &end, nModule, nTh, myID);
+	findAssignedPart(&start, &end, nModule, size, rank);
 
 	for (int i = start; i < end; i++) {
 		sum_exit_log_exit += pLogP(modules[i].exitPr);
 		sum_stay_log_stay += pLogP(modules[i].stayPr);
 		sumExit += modules[i].exitPr;
-		//printf("the exit probability for rank:%d and module:%d is:%f\n",
-		//rank, i, modules[i].exitPr);
 	}
-	//}
 
-	/*cout << "ping" << endl;
-	 sum_exit_log_exit = 0.0; //sum_exit_log_exit
-	 sum_stay_log_stay = 0.0;	//sum_stay_log_stay
-	 sumExit = 0.0;  //sumExit
+	send_exit_stay_sum[0] = sum_exit_log_exit;
+	send_exit_stay_sum[1] = sum_stay_log_stay;
+	send_exit_stay_sum[2] = sumExit;
 
-
-
-	 sum_exit_log_exit_s = 0.0; //sum_exit_log_exit_s
-	 sum_stay_log_stay_s = 0.0; //sum_stay_log_stay_s
-	 sumExit_s = 0.0; //sumExit_s
-
-
-	 int start, end;
-	 findAssignedPart(&start, &end, nModule, numTh, rank);
-
-	 for (int i = start; i < end; i++) {
-	 sum_exit_log_exit_s += pLogP(modules[i].ExitPr());
-	 sum_stay_log_stay_s += pLogP(modules[i].StayPr());
-	 sumExit_s += modules[i].ExitPr();
-	 }
-	 if (rank != 0) {
-	 MPI_Send(&sum_exit_log_exit_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-	 MPI_Send(&sum_stay_log_stay_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-	 MPI_Send(&sumExit_s, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-	 }
-	 cout << "pong2" << endl;
-
-	 if (rank == 0) {
-	 sum_exit_log_exit = sum_exit_log_exit_s;
-	 sum_stay_log_stay = sum_stay_log_stay_s;
-	 sumExit = sumExit_s;
-	 for (int prId = 1; prId < size; prId++) {
-	 MPI_Recv(&sum_exit_log_exit_s, 1, MPI_DOUBLE, prId, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 MPI_Recv(&sum_stay_log_stay_s, 1, MPI_DOUBLE, prId, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 MPI_Recv(&sumExit_s, 1, MPI_DOUBLE, prId, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 sum_exit_log_exit += sum_exit_log_exit_s;
-	 sum_stay_log_stay += sum_stay_log_stay_s;
-	 sumExit += sumExit_s;
-	 }
-
-	 for (int prId = 1; prId < size; prId++) {
-	 MPI_Send(&sum_exit_log_exit, 1, MPI_DOUBLE, prId, 0,
-	 MPI_COMM_WORLD);
-	 MPI_Send(&sum_stay_log_stay, 1, MPI_DOUBLE, prId, 0,
-	 MPI_COMM_WORLD);
-	 MPI_Send(&sumExit, 1, MPI_DOUBLE, prId, 0, MPI_COMM_WORLD);
-	 }
-	 }
-	 cout << "pong1" << endl;
-
-	 if (rank != 0) {
-	 MPI_Recv(&sum_exit_log_exit, 1, MPI_DOUBLE, 0, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 MPI_Recv(&sum_stay_log_stay, 1, MPI_DOUBLE, 0, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 MPI_Recv(&sumExit, 1, MPI_DOUBLE, 0, 0,
-	 MPI_COMM_WORLD,
-	 MPI_STATUSES_IGNORE);
-	 }
-
-	 cout << "pong" << endl;*/
+	for (int processId = 0; processId < size; processId++) {
+		if (processId != rank) {
+			MPI_Sendrecv(send_exit_stay_sum, 3, MPI_DOUBLE, processId, tag,
+					receive_exit_stay_sum, 3,
+					MPI_DOUBLE, processId, tag,
+					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+			sum_exit_log_exit += receive_exit_stay_sum[0];
+			sum_stay_log_stay += receive_exit_stay_sum[1];
+			sumExit += receive_exit_stay_sum[2];
+		}
+	}
 	sumAllExitPr = sumExit;
 	double sumExit_log_sumExit = pLogP(sumExit);
 
 	codeLength = sumExit_log_sumExit - 2.0 * sum_exit_log_exit
 			+ sum_stay_log_stay - allNodes_log_allNodes;
 
-	/*	sumAllExitPr = data[2];
-	 double sumExit_log_sumExit = pLogP(data[2]);
-	 codeLength = sumExit_log_sumExit - 2.0 * data[0] + data[1]
-	 - allNodes_log_allNodes;*/
+	gettimeofday(&endT, NULL);
 
-	//cout << "abcd" << endl;
-	/*	delete[] data;
-	 delete[] data_s;*/
-
+	if (tag == 0) {
+		printf(
+				"inside calibrate function time for calculating the codelength in rank:%d is %f and codelength:%f\n",
+				rank, elapsedTimeInSec(startT, endT), codeLength);
+	}
 }
 
 /*
@@ -1001,6 +676,11 @@ int Network::move(int iteration) {
 			// update related to newMod...
 			int newMod = bestResult.newModule;
 
+			if (modules[newMod].numMembers == 0) {
+				nEmptyMod--;
+				nModule++;
+			}
+
 			nd.setModIdx(newMod);
 
 			modules[newMod].numMembers++;
@@ -1020,6 +700,11 @@ int Network::move(int iteration) {
 			modules[oldMod].sumPr = bestResult.sumPr1;
 			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
 			modules[oldMod].sumTPWeight -= ndTPWeight;
+
+			if (modules[oldMod].numMembers == 0) {
+				nEmptyMod++;
+				nModule--;
+			}
 
 			sumAllExitPr = bestResult.newSumExitPr;
 
@@ -1051,17 +736,14 @@ int Network::move(int iteration) {
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			printf("Before sendrecv for rank:%d, destination:%d, source:%d\n",
-					rank, processId, processId);
 			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
 					iteration, intReceivePack, intPackSize, MPI_INT, processId,
-					iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					iteration,
+					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
 					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
 					processId, iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-			printf("After sendrecv for rank:%d, destination:%d, source:%d\n",
-					rank, processId, processId);
 
 			int totalElementSentFromSender = intReceivePack[intPackSize - 1];
 
@@ -1083,6 +765,11 @@ int Network::move(int iteration) {
 				if (oldModule != newModule) {
 					numMoved++;
 
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
+
 					modules[newModule].numMembers++;
 					modules[newModule].exitPr =
 							doubleReceivePack[4 * nNode + z];
@@ -1103,8 +790,12 @@ int Network::move(int iteration) {
 					modules[oldModule].sumPr = doubleReceivePack[1 * nNode + z];
 					modules[oldModule].stayPr = modules[oldModule].exitPr
 							+ modules[oldModule].sumPr;
-
 					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
+
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
 				}
 			}
 		}
@@ -1155,14 +846,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		randomGlobalArray[i] = activeNodes[i];
 	}
 
-	/*	for (int i = 0; i < nActive; i++) {
-	 int target = R->randInt(nActive - 1);
-	 // swap numbers between i and target.
-	 int tmp = randomGlobalArray[i];
-	 randomGlobalArray[i] = randomGlobalArray[target];
-	 randomGlobalArray[target] = tmp;
-	 }*/
-
 	int start, end;
 	findAssignedPart(&start, &end, nActive, size, rank);
 
@@ -1196,16 +879,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		bool moduleUpdate = false;
 		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
-		//resultObj.elementCount = 0;
-		/*		if (iteration == 3 && randomGlobalArray[i] == 3 && inWhile == false) {
-		 printf(
-		 "unique oldMod:%d, rank:%d, nodes[%d].modIdx:%d, ModIdx():%d, randomGlobalArray[%d]:%d, nodes[randomGlobalArray[%d]].ModIdx():%d\n",
-		 oldMod, rank, randomGlobalArray[i],
-		 nodes[randomGlobalArray[i]].modIdx,
-		 nodes[randomGlobalArray[i]].ModIdx(), i,
-		 randomGlobalArray[i], i,
-		 nodes[randomGlobalArray[i]].ModIdx());
-		 }*/
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
 
@@ -1217,9 +890,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		for (link_iterator linkIt = nd.outLinks.begin();
 				linkIt != nd.outLinks.end(); linkIt++) {
 			int newMod = nodes[linkIt->first].ModIdx();
-			//printf("analyzing outnode:%d, outlinked node:%d, rank:%d\n",
-			//nodes[randomGlobalArray[i]].ID() + 1, linkIt->first + 1,
-			//rank);
 
 			if (outFlowToMod.count(newMod) > 0) {
 				outFlowToMod[newMod] += beta * linkIt->second;
@@ -1363,18 +1033,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 							intSendPack[2 * nNode + elementCount] =
 									currentResult.newModule;
 
-					if (iteration == 3 && randomGlobalArray[i] == 3
-							&& inWhile == false) {
-						printf(
-								"special oldMod:%d, rank:%d, nodes[%d].modIdx:%d, ModIdx():%d, randomGlobalArray[%d]:%d, nodes[randomGlobalArray[%d]].ModIdx():%d, newMod:%d\n",
-								oldMod, rank, randomGlobalArray[i],
-								nodes[randomGlobalArray[i]].modIdx,
-								nodes[randomGlobalArray[i]].ModIdx(), i,
-								randomGlobalArray[i], i,
-								nodes[randomGlobalArray[i]].ModIdx(),
-								bestResult.newModule);
-					}
-
 					bestResult.diffCodeLen = doubleSendPack[elementCount] =
 							currentResult.diffCodeLen;
 
@@ -1401,18 +1059,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 				intSendPack[1 * nNode + elementCount] = oldMod;
 				intSendPack[2 * nNode + elementCount] = bestResult.newModule;
-				/*				if (iteration == 3 && randomGlobalArray[i] == 3
-				 && inWhile == false) {
-				 printf(
-				 "speci oldMod:%d, rank:%d, i:%d, nodes[%d].modIdx:%d, ModIdx():%d, randomGlobalArray[%d]:%d, nodes[randomGlobalArray[%d]].ModIdx():%d, newMod:%d, currentResult.diffCodeLen:%f, bestResult.diffCodeLen:%f, bestResult.newModule:%d\n",
-				 oldMod, rank, i, randomGlobalArray[i],
-				 nodes[randomGlobalArray[i]].modIdx,
-				 nodes[randomGlobalArray[i]].ModIdx(), i,
-				 randomGlobalArray[i], i,
-				 nodes[randomGlobalArray[i]].ModIdx(), newMod,
-				 currentResult.diffCodeLen, bestResult.diffCodeLen,
-				 bestResult.newModule);
-				 }*/
+
 			}
 		}
 
@@ -1421,6 +1068,11 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		if (bestResult.diffCodeLen < vThresh) {
 			// update related to newMod...
 			int newMod = bestResult.newModule;
+
+			if (modules[newMod].numMembers == 0) {
+				nEmptyMod--;
+				nModule++;
+			}
 
 			nd.setModIdx(newMod);
 
@@ -1441,15 +1093,14 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			modules[oldMod].exitPr = bestResult.exitPr1;
 			modules[oldMod].sumPr = bestResult.sumPr1;
 			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-
 			modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			sumAllExitPr = bestResult.newSumExitPr;
+			if (modules[oldMod].numMembers == 0) {
+				nEmptyMod++;
+				nModule--;
+			}
 
-			/*			if (iteration == 0) {
-			 printf("best result sum all exit pr:%f rank:%d\n",
-			 bestResult.newSumExitPr, rank);
-			 }*/
+			sumAllExitPr = bestResult.newSumExitPr;
 
 			codeLengthReduction += bestResult.diffCodeLen;
 			//codeLength += bestResult.diffCodeLen;
@@ -1488,8 +1139,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			printf("Before sendrecv for rank:%d, destination:%d, source:%d\n",
-					rank, processId, processId);
 			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
 					iteration, intReceivePack, intPackSize, MPI_INT, processId,
 					iteration,
@@ -1498,8 +1147,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
 					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
 					processId, iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-			printf("After sendrecv for rank:%d, destination:%d, source:%d\n",
-					rank, processId, processId);
 
 			int totalElementSentFromSender = intReceivePack[intPackSize - 1];
 
@@ -1519,7 +1166,13 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				nod.setModIdx(newModule);
 
 				if (oldModule != newModule) {
+
 					numMoved++;
+
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
 
 					modules[newModule].numMembers++;
 					modules[newModule].exitPr = doubleReceivePack[4 * nActive
@@ -1546,6 +1199,11 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
 
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
+
 					// update activeNodes and isActives vectors.
 					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 					for (link_iterator linkIt = nod.outLinks.begin();
@@ -1562,100 +1220,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 	}
 
-	/*	for (int prId = 0; prId < size; prId++) {
-	 if (prId != rank) {
-	 printf("testing message send from sender:%d and receiver:%d\n",
-	 rank, prId);
-	 MPI_Send(intSendPack, 300, MPI_INT, prId, iteration,
-	 MPI_COMM_WORLD);
-	 if (iteration == 0) {
-	 for (int it = 0; it < 300; it++) {
-	 printf(
-	 "the receiver:%d, the sender:%d, intSendPack[%d]:%d\n",
-	 prId, rank, it, intSendPack[it]);
-	 }
-	 }
-	 MPI_Send(doubleSendPack, doublePackSize, MPI_DOUBLE, prId,
-	 iteration,
-	 MPI_COMM_WORLD);
-	 }
-	 }*/
-
-	/*for (int sId = 0; sId < size; sId++) {
-	 if (sId != rank) {
-	 MPI_Recv(intReceivePack, 300, MPI_INT, sId, iteration,
-	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-	 if (iteration == 0) {
-	 for (int it = 0; it < 300; it++) {
-	 printf(
-	 "the receiver:%d, the sender:%d, intReceivePack[%d]:%d\n",
-	 rank, sId, it, intReceivePack[it]);
-	 }
-	 }
-	 printf("testing message receive from sender:%d and receiver:%d\n",
-	 sId, rank);
-	 MPI_Recv(doubleReceivePack, doublePackSize, MPI_DOUBLE, sId,
-	 iteration,
-	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-
-	 int totalElementSentFromSender = intReceivePack[intPackSize - 1];
-
-	 sumAllExitPr += doubleReceivePack[doublePackSize - 1];
-	 codeLength += doubleReceivePack[doublePackSize - 2];
-
-	 for (int z = 0; z < totalElementSentFromSender; z++) {
-
-	 int nodeIndex = intReceivePack[z];
-
-	 Node& nod = nodes[randomGlobalArray[nodeIndex]];
-	 int oldModule = intReceivePack[1 * nNode + z];
-	 int newModule = intReceivePack[2 * nNode + z];
-
-	 //we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
-	 //int nodeIndex = nod.ID();
-	 nod.setModIdx(newModule);
-
-	 if (oldModule != newModule) {
-	 numMoved++;
-
-	 modules[newModule].exitPr = doubleReceivePack[4 * nActive
-	 + z];
-	 modules[newModule].sumPr =
-	 doubleReceivePack[2 * nActive + z];
-	 modules[newModule].stayPr = modules[newModule].exitPr
-	 + modules[newModule].sumPr;
-
-	 modules[newModule].sumTPWeight += nod.TeleportWeight();
-
-	 if (nod.IsDangling()) {
-	 modules[newModule].sumDangling += nod.Size();
-	 modules[oldModule].sumDangling -= nod.Size();
-	 }
-
-	 modules[oldModule].exitPr = doubleReceivePack[3 * nActive
-	 + z];
-	 modules[oldModule].sumPr =
-	 doubleReceivePack[1 * nActive + z];
-	 modules[oldModule].stayPr = modules[oldModule].exitPr
-	 + modules[oldModule].sumPr;
-
-	 modules[oldModule].sumTPWeight -= nod.TeleportWeight();
-
-	 // update activeNodes and isActives vectors.
-	 // We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
-	 for (link_iterator linkIt = nod.outLinks.begin();
-	 linkIt != nod.outLinks.end(); linkIt++)
-	 isActives[linkIt->first] = 1;// set as an active nodes.
-
-	 for (link_iterator linkIt = nod.inLinks.begin();
-	 linkIt != nod.inLinks.end(); linkIt++)
-	 isActives[linkIt->first] = 1;// set as an active nodes.
-	 }
-	 }
-
-	 }
-	 }*/
-
 	vector<int>().swap(activeNodes);
 	for (int i = 0; i < isActives.size(); i++) {
 		if (isActives[i] == 1) {
@@ -1663,17 +1227,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			isActives[i] = 0;	// reset the flag of isActives[i].
 		}
 	}
-
-	if (iteration == 10 && inWhile == false) {
-		for (int i = 0; i < nNode; i++) {
-			printf(
-					"Inside prioritize_move distributed output for rank:%d, nodes[%d], module Id:%d\n",
-					rank, i, nodes[i].modIdx);
-		}
-	}
-
-	printf("tow for rank:%d in prioritize_move, network.superNodes.size():%d\n",
-			rank, superNodes.size());
 	printf("*************leaving prioritize move:rank:%d*************\n", rank);
 
 	delete[] randomGlobalArray;
@@ -2693,6 +2246,12 @@ int Network::moveSuperNodes(int iteration) {
 			int spMembers = nd.members.size();
 
 			if (oldMod != newMod) {
+
+				if (modules[newMod].numMembers == 0) {
+					nEmptyMod--;
+					nModule++;
+				}
+
 				nd.setModIdx(newMod);
 
 				for (int j = 0; j < spMembers; j++) {
@@ -2717,6 +2276,11 @@ int Network::moveSuperNodes(int iteration) {
 				modules[oldMod].sumPr = bestResult.sumPr1;
 				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
 				modules[oldMod].sumTPWeight -= ndTPWeight;
+
+				if (modules[oldMod].numMembers == 0) {
+					nEmptyMod++;
+					nModule--;
+				}
 
 				sumAllExitPr = bestResult.newSumExitPr;
 
@@ -2750,7 +2314,8 @@ int Network::moveSuperNodes(int iteration) {
 		if (processId != rank) {
 			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
 					iteration, intReceivePack, intPackSize, MPI_INT, processId,
-					iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					iteration,
+					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
 					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
@@ -2774,6 +2339,11 @@ int Network::moveSuperNodes(int iteration) {
 				if (oldModule != newModule) {
 
 					numMoved += spMembers;
+
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
 
 					nod.setModIdx(newModule);
 
@@ -2803,6 +2373,11 @@ int Network::moveSuperNodes(int iteration) {
 					modules[oldModule].stayPr = modules[oldModule].exitPr
 							+ modules[oldModule].sumPr;
 					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
+
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
 				}
 			}
 		}
@@ -2846,70 +2421,13 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	printf(
-			"tow for rank:%d in prioritize_moveSPNode before, network.superNodes.size():%d\n",
-			rank, superNodes.size());
-
-	printf(
-			"barrier point 1 for rank:%d, tag:%d, iteration:%d, inWhile:%d, number of supernode:%d\n",
-			rank, tag, iteration, inWhile, numSPNode);
-
-	printf(
-			"rendevouz point:4, reached upto this point for rank:%d, and iteration:%d, tag:%d, number of SPNode:%d\n",
-			rank, iteration, tag, numSPNode);
-
-	/*	if (tag == 0 && iteration == 0 && inWhile == true) {
-	 showOutput(iteration, 1, true);
-	 }*/
-
-	/*	if (iteration == 0) {
-	 printf("this is called for rank:%d, where 5\n", rank);
-	 }*/
-
-	/*	if (iteration == 0 && tag == 3 && first == 1 && inWhile == false) {
-	 for (int it = 0; it < numSPNode; it++) {
-	 int noOutLinks = superNodes[it].outLinks.size();
-	 printf(
-	 "iltering by the process:%d, spNode:%d, number of outlinks:%d, iteration:%d, total number of active nodes:%d\n",
-	 rank, it, noOutLinks, iteration, activeNodes.size());
-	 for (int ite = 0; ite < noOutLinks; ite++) {
-	 printf(
-	 "ilter by the process:%d, superNodes [%d].outLinks[%d]->otherEnd:%d, weight:%f\n",
-	 rank, it, ite, superNodes[it].outLinks[ite].first,
-	 superNodes[it].outLinks[ite].second);
-	 }
-	 }
-	 }*/
-
 	int nActive = activeNodes.size();
-	/*	if (tag == 0 && iteration == 0 && inWhile == true) {
-	 printf(
-	 "in prioritize_SPNode for rank:%d, total number of activeNodes:%d\n",
-	 rank, nActive);
-	 }*/
-	/*	if (iteration == 1 && tag == 1)
-	 printf("we are checking rank:%d for active node size:%d\n", rank,
-	 nActive);*/
 
 	int* randomGlobalArray = new int[nActive]();
 
 	for (int i = 0; i < nActive; i++) {
 		randomGlobalArray[i] = activeNodes[i];
-
-		/*		if (tag == 0 && iteration == 0 && inWhile == true) {
-		 printf(
-		 "on prioritize_SPNode for rank:%d, randomGlobalArray[%d]:%d\n",
-		 rank, i, randomGlobalArray[i]);
-		 }*/
 	}
-
-	/*	for (int i = 0; i < nActive; i++) {
-	 int target = R->randInt(nActive - 1);
-	 // swap numbers between i and target.
-	 int tmp = randomGlobalArray[i];
-	 randomGlobalArray[i] = randomGlobalArray[target];
-	 randomGlobalArray[target] = tmp;
-	 }*/
 
 // Generate random sequential order of active nodes.
 	const unsigned int intPackSize = 3 * nNode + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
@@ -2926,24 +2444,11 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	int numMoved = 0;
 
 	SPNodeCountforSending = 0;
-	/*	if (iteration == 0) {
-	 printf("this is called for rank:%d, where 6\n", rank);
-	 }*/
 
 	int start, end;
 	findAssignedPart(&start, &end, nActive, size, rank);
 
 	int numberOfSPNode = end - start; //number of elements assigned to this processor
-
-	/*	for (int i = 0; i < nActive; i++) {
-	 printf("r1nk:%d, activeNodes[%d]:%d, randomGlobalArray[%d]:%d\n", rank,
-	 i, activeNodes[i], i, randomGlobalArray[i]);
-	 }*/
-
-	/*	if (iteration == 0) {
-	 printf("this is called for rank:%d, where 7 number of elements:%d\n",
-	 rank, numberOfSPNode);
-	 }*/
 
 // Move each node to one of its neighbor modules in random sequential order.
 	for (int i = start; i < end; i++) {
@@ -2953,12 +2458,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		bool moduleUpdate = false;
 
 		int oldMod = nd.ModIdx();
-
-		/*		if (iteration == 0) {
-		 printf(
-		 "this is called for rank:%d, where 8 number of elements:%d, oldMod:%d\n",
-		 rank, numberOfSPNode, oldMod);
-		 }*/
 
 		unsigned int nModLinks = 0; // The number of links to/from between the current node and other modules.
 
@@ -3010,12 +2509,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		double additionalTeleportInFlow = (alpha * (oldSumPr1 - ndSize)
 				+ beta * (oldSumDangling1 - ndDanglingSize)) * ndTPWeight;
 
-		/*		if (iteration == 0) {
-		 printf(
-		 "this is called for rank:%d, where 9 number of elements:%d, oldMod:%d\n",
-		 rank, numberOfSPNode, oldMod);
-		 }*/
-
 		// For teleportation and danling nodes.
 		for (flowmap::iterator it = outFlowToMod.begin();
 				it != outFlowToMod.end(); it++) {
@@ -3048,29 +2541,13 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		bestResult.diffCodeLen = 0.0; // This is the default value, if we can't find diffCodeLen < 0, then don't move the node.
 		bestResult.newModule = oldMod; // I have to do that for the sole purpose of sending the information of moving to a new module when sending through MPI although may be there is no module change at all
 
-		/*		if (iteration == 0) {
-		 printf(
-		 "this is called for rank:%d, where 10 number of elements:%d, oldMod:%d\n",
-		 rank, numberOfSPNode, oldMod);
-		 }*/
-
 		for (flowmap::iterator it = outFlowToMod.begin();
 				it != outFlowToMod.end(); it++) {
 			int newMod = it->first;
 			double outFlowToNewMod = it->second;
 			double inFlowFromNewMod = inFlowFromMod[newMod];
 
-			/*			if (iteration == 0) {
-			 printf("there is the process 3:%d, oldMod:%d, newMod:%d\n",
-			 rank, oldMod, newMod);
-			 }*/
-
 			if (newMod != oldMod) {
-
-				/*				if (iteration == 0) {
-				 printf("there is the process 1:%d, oldMod:%d, newMod:%d\n",
-				 rank, oldMod, newMod);
-				 }*/
 				// copy module specific values...
 				double oldExitPr2 = modules[newMod].exitPr;
 				double oldSumPr2 = modules[newMod].sumPr;
@@ -3101,12 +2578,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 				// delta_L(M) = delta_allExit - 2.0 * delta_exit_log_exit + delta_stay_log_stay.
 				currentResult.diffCodeLen = delta_allExit_log_allExit
 						- 2.0 * delta_exit_log_exit + delta_stay_log_stay;
-
-				/*				if (iteration == 0) {
-				 printf(
-				 "this is called for rank:%d, where 11 number of elements:%d, oldMod:%d\n",
-				 rank, numberOfSPNode, oldMod);
-				 }*/
 
 				if (currentResult.diffCodeLen < bestResult.diffCodeLen) {
 
@@ -3150,10 +2621,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
 				intSendPack[2 * nNode + SPNodeCountforSending] =
 						bestResult.newModule;
-				/*				if (iteration == 0 && tag == 1) {
-				 printf("there is the process:%d, oldMod:%d, newMod:%d\n",
-				 rank, oldMod, bestResult.newModule);
-				 }*/
 			}
 		}
 
@@ -3167,6 +2634,11 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			int spMembers = nd.members.size();
 
 			if (oldMod != newMod) {
+
+				if (modules[newMod].numMembers == 0) {
+					nEmptyMod--;
+					nModule++;
+				}
 
 				nd.setModIdx(newMod);
 
@@ -3193,6 +2665,10 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
 				modules[oldMod].sumTPWeight -= ndTPWeight;
 
+				if (modules[oldMod].numMembers == 0) {
+					nEmptyMod++;
+					nModule--;
+				}
 				/*				if (iteration == 0) {
 				 printf("this is called for rank:%d\n", rank);
 				 }*/
@@ -3232,41 +2708,12 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		}
 	}
 
-	/*	if (iteration == 0) {
-	 printf("showing for the rank:%d, number of supernodes:%d\n", rank,
-	 superNodes.size());
-	 }*/
 	intSendPack[intPackSize - 1] = SPNodeCountforSending;
 	doubleSendPack[doublePackSize - 1] = sumAllExitPr - currentSumAllExitPr;
 	codeLength += codeLengthReduction;
 	doubleSendPack[doublePackSize - 2] = codeLengthReduction;
 
-	/*	if (iteration == 0) {
-	 printf("this is called for rank:%d, where 1\n", rank);
-	 }*/
-
 //good point: if someone has no data to send, find some way to indicate that
-	/*	for (int prId = 0; prId < size; prId++) {
-	 if (prId != rank) {
-	 MPI_Send(intSendPack, intPackSize, MPI_INT, prId, iteration,
-	 MPI_COMM_WORLD);
-	 MPI_Send(doubleSendPack, doublePackSize, MPI_DOUBLE, prId,
-	 iteration,
-	 MPI_COMM_WORLD);
-	 }
-	 }*/
-
-	printf(
-			"reached upto this point for rank:%d, and iteration:%d, and rendevouz point:13\n",
-			rank, iteration);
-
-	/*	for (int i = 0; i < nActive; i++) {
-	 if (tag == 0 && iteration == 0 && inWhile == true) {
-	 printf(
-	 "from prioritize_SPNode for rank:%d, randomGlobalArray[%d]:%d\n",
-	 rank, i, randomGlobalArray[i]);
-	 }
-	 }*/
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
@@ -3284,53 +2731,29 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			sumAllExitPr += doubleReceivePack[doublePackSize - 1];
 			codeLength += doubleReceivePack[doublePackSize - 2];
 
-			/*			if (iteration == 0) {
-			 printf("this is called for rank:%d, where 2\n", rank);
-			 }*/
-
 			for (int z = 0; z < totalSPNodefromSender; z++) {
 
 				int nodeIndex = intReceivePack[z];
 				SuperNode& nod = superNodes[randomGlobalArray[nodeIndex]];// I didn't need to send the indices from the processes because every process has already this information from counts and displs
-
-				/*				printf(
-				 "rendevouz point:13 for rank:%d, iteration:%d, nodeIndex:%d, randomGlobalArray[%d]:%d, numberOf supernodes:%d, nod.members.size:%d\n",
-				 rank, iteration, nodeIndex, nodeIndex,
-				 randomGlobalArray[nodeIndex], superNodes.size(),
-				 nod.members.size());*/
 
 				int spMembers = nod.members.size();
 
 				int oldModule = intReceivePack[1 * nNode + z];
 				int newModule = intReceivePack[2 * nNode + z];
 
-				/*				if (iteration == 0) {
-				 printf(
-				 "this is called for rank:%d, where 3, spMembers:%d, z:%d, nodeIndex:%d\n",
-				 rank, spMembers, z, nodeIndex);
-				 }*/
-
 				if (oldModule != newModule) {
 
 					numMoved += spMembers;
 
-					/*					if (iteration == 0) {
-					 printf("for process:%d, 2 number Moved:%d\n", rank,
-					 numMoved);
-
-					 }*/
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
 
 					nod.setModIdx(newModule);
 
 					for (int j = 0; j < spMembers; j++) {
 						nod.members[j]->setModIdx(newModule);
-						/*						if (iteration == 0 && tag == 1) {
-						 printf(
-						 "exposing rank:%d, spMembers:%d, nd.members[%d]:%d, nd.members[%d].module:%d, oldMod:%d, newMod:%d\n",
-						 rank, spMembers, j, nod.members.at(j)->id,
-						 j, nod.members.at(j)->modIdx, oldModule,
-						 newModule);
-						 }*/
 					}
 
 					modules[newModule].numMembers += spMembers;
@@ -3360,6 +2783,11 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 							+ modules[oldModule].sumPr;
 					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
 
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
+
 					// update activeNodes and isActives vectors.
 					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 					for (link_iterator linkIt = nod.outLinks.begin();
@@ -3374,28 +2802,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		}
 	}
 
-	/*	for (int i = 0; i < nActive; i++) {
-	 if (tag == 0 && iteration == 0 && inWhile == true) {
-	 printf(
-	 "to prioritize_SPNode for rank:%d, randomGlobalArray[%d]:%d\n",
-	 rank, i, randomGlobalArray[i]);
-	 }
-	 }*/
-
-	printf(
-			"reached upto this point for rank:%d, and iteration:%d, and rendevouz point:5\n",
-			rank, tag);
-
-	/*for (int sId = 0; sId < size; sId++) {//my going through loop from sId 0->size I am imposing an ordering which is not good for MPI Performance
-	 if (sId != rank) {
-	 MPI_Recv(intReceivePack, intPackSize, MPI_INT, sId, iteration,
-	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-	 MPI_Recv(doubleReceivePack, doublePackSize, MPI_DOUBLE, sId,
-	 iteration,
-	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-	 }
-	 }*/
-
 	vector<int>().swap(activeNodes);
 	for (int i = 0; i < isActives.size(); i++) {
 		if (isActives[i] == 1) {
@@ -3403,17 +2809,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			isActives[i] = 0;	// reset the flag of isActives[i].
 		}
 	}
-
-	/*	if (iteration == 1 && tag == 3) {
-	 for (int i = 0; i < nNode; i++) {
-	 printf("distributed output for rank:%d, nodes[%d], module Id:%d\n",
-	 rank, i, nodes[i].modIdx);
-	 }
-	 }*/
-
-	printf(
-			"tow for rank:%d in prioritize_moveSPNode after, network.superNodes.size():%d\n",
-			rank, superNodes.size());
 
 	delete[] randomGlobalArray;
 	delete[] intSendPack;
@@ -3426,8 +2821,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 double Network::calculateModularityScore() {
 	const int D = nNode;
-	double eij[D][D] = { 0.0 };
-	double a[D] = { 0.0 };
+	double eij[D][D];
+	double a[D];
 	double Q = 0.0;
 
 	for (int i = 0; i < nNode; i++) {
@@ -3436,14 +2831,6 @@ double Network::calculateModularityScore() {
 		}
 		a[i] = 0.0;
 	}
-
-	printf("before calculating modularity score\n");
-	/*	for (int i = 0; i < nNode; i++) {
-	 for (int j = 0; j < nNode; j++) {
-	 printf("%.1f ", eij[i][j]);
-	 }
-	 printf("\n");
-	 }*/
 
 	printf("calculating modularity score\n");
 	for (int i = 0; i < nNode; i++) {
@@ -4286,10 +3673,6 @@ void Network::updateMembersInModule() {
 	for (int i = 0; i < nNode; i++) {
 		modules[nodes[i].ModIdx()].members.push_back(&nodes[i]);
 	}
-
-	printf(
-			"tow for rank:%d, updateMembersInModule network.superNodes.size():%d\n",
-			rank, superNodes.size());
 }
 
 void Network::updateSPMembersInModule() {
@@ -4361,13 +3744,26 @@ void Network::updateCodeLength(int numTh, bool isSPNode) {
 // calculate exit-probability based on node information and current module assignment.
 double Network::calculateCodeLength() {
 
+	int size, rank;
+	int startIndex, endIndex;
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	double send_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
+	double receive_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
+
+	struct timeval start, end;
+
+	gettimeofday(&start, NULL);
+
+	findAssignedPart(&startIndex, &endIndex, nNode, size, rank);
+
 // calculate exit-probability for each module.
 	double tempSumAllExit = 0.0;
 	double exit_log_exit = 0.0;
 	double stay_log_stay = 0.0;
 
-#pragma omp parallel for reduction (+:tempSumAllExit, exit_log_exit, stay_log_stay)
-	for (unsigned int i = 0; i < nNode; i++) {
+	for (unsigned int i = startIndex; i < endIndex; i++) {
 		if (modules[i].numMembers > 0) {
 // exitPr w.r.t. teleportation.
 			double exitPr = Network::alpha * (1.0 - modules[i].sumTPWeight)
@@ -4396,8 +3792,26 @@ double Network::calculateCodeLength() {
 		}
 	}
 
+	send_sum_exit_stay[0] = tempSumAllExit;
+	send_sum_exit_stay[1] = exit_log_exit;
+	send_sum_exit_stay[2] = stay_log_stay;
+
+	for (int processId = 0; processId < size; processId++) {
+		if (processId != rank) {
+			MPI_Sendrecv(send_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
+					receive_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
+					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+
+			tempSumAllExit += receive_sum_exit_stay[0];
+			exit_log_exit += receive_sum_exit_stay[1];
+			stay_log_stay += receive_sum_exit_stay[2];
+		}
+	}
+
 	double computedCodeLength = pLogP(tempSumAllExit) - 2.0 * exit_log_exit
 			+ stay_log_stay - allNodes_log_allNodes;
+
+	gettimeofday(&end, NULL);
 
 	return computedCodeLength;
 }
@@ -4423,20 +3837,14 @@ void Network::convertModulesToSuperNodes(int tag) {
 
 	int numSPNodesforCurrentRank;
 
-	double linkWeightstoSpNodesSend[totalEdges] = { };
-	double linkWeightstoSpNodesReceive[totalEdges] = { };
+	double linkWeightstoSpNodesSend[totalEdges];
+	double linkWeightstoSpNodesReceive[totalEdges];
 
-	int toSpNodesSend[toSpNodesPackSize] = { };
-	int toSpNodesReceive[toSpNodesPackSize] = { };
+	int toSpNodesSend[toSpNodesPackSize];
+	int toSpNodesReceive[toSpNodesPackSize];
 
-	int spNodeCountTrackerSend[PackSize] = { };
-	int spNodeCountTrackerReceive[PackSize] = { };
-
-	/*	for (int it = 0; it < toSpNodesPackSize; it++) {
-	 printf(
-	 "before 1 for rank:%d, toSpNodesSend[%d]:%d, toSpNodesReceive[%d]:%d and iteration:%d\n",
-	 rank, it, toSpNodesSend[it], it, toSpNodesReceive[it], tag);
-	 }*/
+	int spNodeCountTrackerSend[PackSize];
+	int spNodeCountTrackerReceive[PackSize];
 
 	vector<unsigned int> modToSPNode(nNode);// indicate corresponding superNode ID from each module.
 
@@ -4451,29 +3859,15 @@ void Network::convertModulesToSuperNodes(int tag) {
 		}
 	}
 
-	printf(
-			"reached upto this point for rank:%d, and edge:%d, and iteration:%d, and rendevouz point:1\n",
-			rank, nEdge, tag);
 	/*
 	 *	Calculate outLinks and inLinks between superNodes...
 	 */
 	int numSPNode = superNodes.size();
-	/*printf("tagging for rank:%d, tag:%d, number of superNodes:%d\n", rank, tag,
-	 numSPNode);*/
-	nModule = idx;
 
-	/*	printf(
-	 "nModule value for rank:%d is %d, number of superNode:%d, iteration:%d\n",
-	 rank, nModule, numSPNode, tag);*/
-//nModule = superNodes.size();
 	int start, end;
 	findAssignedPart(&start, &end, numSPNode, size, rank);
 	numSPNodesforCurrentRank = end - start;
 	toSpNodesSend[nEdge] = numSPNodesforCurrentRank;
-
-	/*printf(
-	 "convert rank:%d, numSPNodes:%d, iteration:%d, numSPNodesforCurrentRank:%d, start:%d, end:%d\n",
-	 rank, numSPNode, tag, numSPNodesforCurrentRank, start, end);*/
 
 	int countSPNode = 0;
 
@@ -4524,15 +3918,6 @@ void Network::convertModulesToSuperNodes(int tag) {
 
 	}
 
-	/*	for (int it = 0; it < toSpNodesPackSize; it++) {
-	 printf(
-	 "before 2 for rank:%d, toSpNodesSend[%d]:%d, toSpNodesReceive[%d]:%d and iteration:%d\n",
-	 rank, it, toSpNodesSend[it], it, toSpNodesReceive[it], tag);
-	 }*/
-	/*	printf(
-	 "reached upto this point for rank:%d, and iteration:%d, and rendevouz point:2\n",
-	 rank, tag);*/
-
 	int totalLinks = 0;
 	for (int m = 0; m < toSpNodesSend[nEdge]; m++) {
 		int spNodeIndex = spNodeCountTrackerSend[m];
@@ -4546,41 +3931,13 @@ void Network::convertModulesToSuperNodes(int tag) {
 		totalLinks += numLinks;
 	}
 
-	/*	for (int prId = 0; prId < size; prId++) {
-	 if (prId != rank) {
-	 MPI_Send(spNodeCountTrackerSend, PackSize, MPI_INT, prId, tag,
-	 MPI_COMM_WORLD);
-	 MPI_Send(toSpNodesSend, toSpNodesPackSize, MPI_INT, prId, tag,
-	 MPI_COMM_WORLD);
-	 MPI_Send(linkWeightstoSpNodesSend, toSpNodesPackSize, MPI_DOUBLE,
-	 prId, tag,
-	 MPI_COMM_WORLD);
-	 }
-	 }*/
-
-	/*	for (int lc = 0; lc < toSpNodesPackSize; lc++) {
-
-	 }*/
-
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			/*			for (int lc = 0; lc < PackSize; lc++) {
-			 printf(
-			 "before mutual send the rank:%d, the processId:%d, spNodeCountTrackerSend[%d]:%d, spNodeCountTrackerReceive[%d]:%d, iteration:%d\n",
-			 rank, processId, lc, spNodeCountTrackerSend[lc], lc,
-			 spNodeCountTrackerReceive[lc], tag);
-			 }*/
+
 			MPI_Sendrecv(spNodeCountTrackerSend, PackSize, MPI_INT, processId,
 					tag, spNodeCountTrackerReceive, PackSize,
 					MPI_INT, processId, tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-
-			/*			for (int lc = 0; lc < PackSize; lc++) {
-			 printf(
-			 "after mutual send the rank:%d, the processId:%d, spNodeCountTrackerSend[%d]:%d, spNodeCountTrackerReceive[%d]:%d, iteration:%d\n",
-			 rank, processId, lc, spNodeCountTrackerSend[lc], lc,
-			 spNodeCountTrackerReceive[lc], tag);
-			 }*/
 
 			MPI_Sendrecv(toSpNodesSend, toSpNodesPackSize, MPI_INT, processId,
 					tag, toSpNodesReceive, toSpNodesPackSize,
@@ -4611,19 +3968,6 @@ void Network::convertModulesToSuperNodes(int tag) {
 		}
 	}
 
-	/*	if (tag == 3) {
-	 for (int iterator = 0; iterator < superNodes.size(); iterator++) {
-	 int nOutLinks = superNodes[iterator].outLinks.size();
-	 for (int i = 0; i < nOutLinks; i++) {
-	 printf(
-	 "checking superNodes for rank:%d, superNodes[%d]->Id:%d, connected to:%d, linkWeight:%f\n",
-	 rank, iterator, superNodes[iterator].id,
-	 superNodes[iterator].outLinks[i].first,
-	 superNodes[iterator].outLinks[i].second);
-	 }
-	 }
-	 }*/
-
 // update inLinks in SEQUENTIAL..
 	for (int i = 0; i < numSPNode; i++) {
 		int nOutLinks = superNodes[i].outLinks.size();
@@ -4634,33 +3978,13 @@ void Network::convertModulesToSuperNodes(int tag) {
 		}
 	}
 
-	/*	for (int it = 0; it < toSpNodesPackSize; it++) {
-	 printf(
-	 "after for rank:%d, toSpNodesSend[%d]:%d, toSpNodesReceive[%d]:%d and iteration:%d\n",
-	 rank, it, toSpNodesSend[it], it, toSpNodesReceive[it], tag);
-	 }*/
-
-	printf(
-			"reached upto this point for rank:%d, and iteration:%d, and rendevouz point:3\n",
-			rank, tag);
-
 	/*	delete[] toSpNodesSend;
 	 delete[] toSpNodesReceive;
-	 delete[] linkWeightstoSpNodesSend;
 	 delete[] spNodeCountTrackerSend;
 	 delete[] spNodeCountTrackerReceive;
+	 delete[] linkWeightstoSpNodesSend;
 	 delete[] linkWeightstoSpNodesReceive;*/
 
-	printf(
-			"reached upto this point for rank:%d, and iteration:%d, and rendevouz point:9\n",
-			rank, tag);
-
-	printf("tagging for rank:%d, tag:%d, number of superNodes:%d\n", rank, tag,
-			numSPNode);
-
-	printf(
-			"tow for rank:%d, convertModulesToSuperNodes network.superNodes.size():%d\n",
-			rank, superNodes.size());
 }
 
 void Network::displayOutlinksforSuperNodes() {
