@@ -628,46 +628,23 @@ int Network::move(int iteration) {
 
 					// update the moduleUpdate flag to indicate that an update has been made for the current vertex i
 					moduleUpdate = true;
-					//save index
-					intSendPack[elementCount] = i;
 
-					//save old module id
-					intSendPack[1 * nNode + elementCount] = oldMod;
 					//save new module id
-					bestResult.newModule =
-							intSendPack[2 * nNode + elementCount] =
-									currentResult.newModule;
+					bestResult.newModule = currentResult.newModule;
 
-					bestResult.diffCodeLen = doubleSendPack[elementCount] =
-							currentResult.diffCodeLen;
+					bestResult.diffCodeLen = currentResult.diffCodeLen;
 
-					bestResult.sumPr1 =
-							doubleSendPack[1 * nNode + elementCount] =
-									currentResult.sumPr1;
+					bestResult.sumPr1 = currentResult.sumPr1;
 
-					bestResult.sumPr2 =
-							doubleSendPack[2 * nNode + elementCount] =
-									currentResult.sumPr2;
+					bestResult.sumPr2 = currentResult.sumPr2;
 
-					bestResult.exitPr1 =
-							doubleSendPack[3 * nNode + elementCount] =
-									currentResult.exitPr1;
+					bestResult.exitPr1 = currentResult.exitPr1;
 
-					bestResult.exitPr2 =
-							doubleSendPack[4 * nNode + elementCount] =
-									currentResult.exitPr2;
+					bestResult.exitPr2 = currentResult.exitPr2;
 
 					bestResult.newSumExitPr = currentResult.newSumExitPr;
 
 				}
-			} else { //this element/vertex is not moving to a new module, so both the newModule and the oldModule are same for this element
-				intSendPack[elementCount] = i;
-
-				// update the moduleUpdate flag to indicate that an update has been made for the current vertex i
-				moduleUpdate = true;
-
-				intSendPack[1 * nNode + elementCount] = oldMod;
-				intSendPack[2 * nNode + elementCount] = bestResult.newModule;
 			}
 		}
 
@@ -706,17 +683,23 @@ int Network::move(int iteration) {
 				nModule--;
 			}
 
+			// the following code block is for sending information of updated vertex across the other processes
+
+			intSendPack[numMoved] = i;
+			intSendPack[1 * nNode + numMoved] = oldMod;
+			intSendPack[2 * nNode + numMoved] = bestResult.newModule;
+
+			doubleSendPack[numMoved] = bestResult.diffCodeLen;
+			doubleSendPack[1 * nNode + numMoved] = bestResult.sumPr1;
+			doubleSendPack[2 * nNode + numMoved] = bestResult.sumPr2;
+			doubleSendPack[3 * nNode + numMoved] = bestResult.exitPr1;
+			doubleSendPack[4 * nNode + numMoved] = bestResult.exitPr2;
+
 			sumAllExitPr = bestResult.newSumExitPr;
 
 			codeLengthReduction += bestResult.diffCodeLen;
 
 			numMoved++;
-		}
-
-		if (moduleUpdate == false) {
-			intSendPack[elementCount] = i;
-			intSendPack[1 * nNode + elementCount] = oldMod;
-			intSendPack[2 * nNode + elementCount] = oldMod;
 		}
 
 		elementCount++;
@@ -729,7 +712,7 @@ int Network::move(int iteration) {
 
 	}
 
-	intSendPack[intPackSize - 1] = elementCount;
+	intSendPack[intPackSize - 1] = numMoved;
 	doubleSendPack[doublePackSize - 1] = sumAllExitPr - currentSumAllExitPr;
 	codeLength += codeLengthReduction;
 	doubleSendPack[doublePackSize - 2] = codeLengthReduction;
@@ -1006,60 +989,28 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				currentResult.diffCodeLen = delta_allExit_log_allExit
 						- 2.0 * delta_exit_log_exit + delta_stay_log_stay;
 
-				if (iteration == 3 && randomGlobalArray[i] == 3
-						&& inWhile == false) {
-					printf(
-							"specific oldMod:%d, rank:%d, nodes[%d].modIdx:%d, ModIdx():%d, randomGlobalArray[%d]:%d, nodes[randomGlobalArray[%d]].ModIdx():%d, newMod:%d, currentResult.diffCodeLen:%f, bestResult.diffCodeLen:%f\n",
-							oldMod, rank, randomGlobalArray[i],
-							nodes[randomGlobalArray[i]].modIdx,
-							nodes[randomGlobalArray[i]].ModIdx(), i,
-							randomGlobalArray[i], i,
-							nodes[randomGlobalArray[i]].ModIdx(), newMod,
-							currentResult.diffCodeLen, bestResult.diffCodeLen);
-				}
-
 				if (currentResult.diffCodeLen < bestResult.diffCodeLen) {
 					// we need to update bestResult with currentResult.
 
 					// update the moduleUpdate flag to indicate that an update has been made for the current vertex i
 					moduleUpdate = true;
-					//save index
-					intSendPack[elementCount] = i;
 
-					//save old module id
-					intSendPack[1 * nNode + elementCount] = oldMod;
 					//save new module id
-					bestResult.newModule =
-							intSendPack[2 * nNode + elementCount] =
-									currentResult.newModule;
+					bestResult.newModule = currentResult.newModule;
 
-					bestResult.diffCodeLen = doubleSendPack[elementCount] =
-							currentResult.diffCodeLen;
+					bestResult.diffCodeLen = currentResult.diffCodeLen;
 
-					bestResult.sumPr1 = doubleSendPack[1 * nActive
-							+ elementCount] = currentResult.sumPr1;
+					bestResult.sumPr1 = currentResult.sumPr1;
 
-					bestResult.sumPr2 = doubleSendPack[2 * nActive
-							+ elementCount] = currentResult.sumPr2;
+					bestResult.sumPr2 = currentResult.sumPr2;
 
-					bestResult.exitPr1 = doubleSendPack[3 * nActive
-							+ elementCount] = currentResult.exitPr1;
+					bestResult.exitPr1 = currentResult.exitPr1;
 
-					bestResult.exitPr2 = doubleSendPack[4 * nActive
-							+ elementCount] = currentResult.exitPr2;
+					bestResult.exitPr2 = currentResult.exitPr2;
 
 					bestResult.newSumExitPr = currentResult.newSumExitPr;
 
 				}
-			} else { //this element/vertex is not moving to a new module, so both the newModule and the oldModule are same for this element
-				intSendPack[elementCount] = i;
-
-				// update the moduleUpdate flag to indicate that an update has been made for the current vertex i
-				moduleUpdate = true;
-
-				intSendPack[1 * nNode + elementCount] = oldMod;
-				intSendPack[2 * nNode + elementCount] = bestResult.newModule;
-
 			}
 		}
 
@@ -1100,6 +1051,18 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				nModule--;
 			}
 
+			// the following code block is for sending information of updated vertex across the other processes
+
+			intSendPack[numMoved] = i;
+			intSendPack[1 * nNode + numMoved] = oldMod;
+			intSendPack[2 * nNode + numMoved] = bestResult.newModule;
+
+			doubleSendPack[numMoved] = bestResult.diffCodeLen;
+			doubleSendPack[1 * nActive + numMoved] = bestResult.sumPr1;
+			doubleSendPack[2 * nActive + numMoved] = bestResult.sumPr2;
+			doubleSendPack[3 * nActive + numMoved] = bestResult.exitPr1;
+			doubleSendPack[4 * nActive + numMoved] = bestResult.exitPr2;
+
 			sumAllExitPr = bestResult.newSumExitPr;
 
 			codeLengthReduction += bestResult.diffCodeLen;
@@ -1118,11 +1081,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				isActives[linkIt->first] = 1;	// set as an active nodes.
 		}
 
-		if (moduleUpdate == false) {
-			intSendPack[elementCount] = i;
-			intSendPack[1 * nNode + elementCount] = oldMod;
-			intSendPack[2 * nNode + elementCount] = oldMod;
-		}
 		elementCount++;
 	}
 
@@ -1132,7 +1090,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				rank, numberOfElements, elementCount);
 	}
 
-	intSendPack[intPackSize - 1] = elementCount;
+	intSendPack[intPackSize - 1] = numMoved;
 	doubleSendPack[doublePackSize - 1] = sumAllExitPr - currentSumAllExitPr;
 	codeLength += codeLengthReduction;
 	doubleSendPack[doublePackSize - 2] = codeLengthReduction;
@@ -1227,6 +1185,11 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			isActives[i] = 0;	// reset the flag of isActives[i].
 		}
 	}
+
+	/*	if (iteration == 0) {
+	 showOutput(iteration, 0, false);
+	 }*/
+
 	printf("*************leaving prioritize move:rank:%d*************\n", rank);
 
 	delete[] randomGlobalArray;
@@ -2025,6 +1988,7 @@ int Network::moveSuperNodes(int iteration) {
 
 	int nNextActive = 0;
 	int SPNodeCountforSending = 0;
+	int elementCount = 0;
 
 	bool incrementElementCount = false;
 	set<int> emptyModuleSet;
@@ -2057,9 +2021,6 @@ int Network::moveSuperNodes(int iteration) {
 	int numMoved = 0;
 
 	SPNodeCountforSending = 0;
-	/*	if (iteration == 0) {
-	 printf("this is called for rank:%d, where 6\n", rank);
-	 }*/
 
 	int start, end;
 
@@ -2198,44 +2159,23 @@ int Network::moveSuperNodes(int iteration) {
 						- 2.0 * delta_exit_log_exit + delta_stay_log_stay;
 
 				if (currentResult.diffCodeLen < bestResult.diffCodeLen) {
-					moduleUpdate = true;
 
-					intSendPack[SPNodeCountforSending] = i;
-					// we need to update bestResult with currentResult.
-
-					//save old module id
-					intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
 					//save new module id
-					bestResult.newModule = intSendPack[2 * nNode
-							+ SPNodeCountforSending] = currentResult.newModule;
+					bestResult.newModule = currentResult.newModule;
 
-					bestResult.diffCodeLen =
-							doubleSendPack[SPNodeCountforSending] =
-									currentResult.diffCodeLen;
-					//bestResult.diffCodeLen = currentResult.diffCodeLen;
-					//bestResult.newModule = currentResult.newModule;
-					bestResult.sumPr1 = doubleSendPack[1 * nNode
-							+ SPNodeCountforSending] = currentResult.sumPr1;
-					//bestResult.sumPr1 = currentResult.sumPr1;
-					bestResult.sumPr2 = doubleSendPack[2 * nNode
-							+ SPNodeCountforSending] = currentResult.sumPr2;
-					//bestResult.sumPr2 = currentResult.sumPr2;
-					bestResult.exitPr1 = doubleSendPack[3 * nNode
-							+ SPNodeCountforSending] = currentResult.exitPr1;
-					//bestResult.exitPr1 = currentResult.exitPr1;
-					bestResult.exitPr2 = doubleSendPack[4 * nNode
-							+ SPNodeCountforSending] = currentResult.exitPr2;
-					//bestResult.exitPr2 = currentResult.exitPr2;
+					bestResult.diffCodeLen = currentResult.diffCodeLen;
+
+					bestResult.sumPr1 = currentResult.sumPr1;
+
+					bestResult.sumPr2 = currentResult.sumPr2;
+
+					bestResult.exitPr1 = currentResult.exitPr1;
+
+					bestResult.exitPr2 = currentResult.exitPr2;
+
 					bestResult.newSumExitPr = currentResult.newSumExitPr;
-					//bestResult.newSumExitPr = currentResult.newSumExitPr;
-				}
-			} else { //this element/vertex is not moving to a new module, so both the newModule and the oldModule are same for this element
 
-				moduleUpdate = true;
-				intSendPack[SPNodeCountforSending] = i;
-				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * nNode + SPNodeCountforSending] =
-						bestResult.newModule;
+				}
 			}
 		}
 
@@ -2282,27 +2222,37 @@ int Network::moveSuperNodes(int iteration) {
 					nModule--;
 				}
 
+				//the following code is for sending module update across processors
+				intSendPack[SPNodeCountforSending] = i;
+				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
+				intSendPack[2 * nNode + SPNodeCountforSending] =
+						bestResult.newModule;
+				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
+				doubleSendPack[1 * nNode + SPNodeCountforSending] =
+						bestResult.sumPr1;
+				doubleSendPack[2 * nNode + SPNodeCountforSending] =
+						bestResult.sumPr2;
+				doubleSendPack[3 * nNode + SPNodeCountforSending] =
+						bestResult.exitPr1;
+				doubleSendPack[4 * nNode + SPNodeCountforSending] =
+						bestResult.exitPr2;
 				sumAllExitPr = bestResult.newSumExitPr;
+
+				SPNodeCountforSending++;
 
 				codeLengthReduction += bestResult.diffCodeLen;
 				numMoved += spMembers; // although we moved a superNode, a superNode is actually a set of nodes.
 			}
 		}
 
-		if (moduleUpdate == false) {
-			intSendPack[SPNodeCountforSending] = i;
-			intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
-			intSendPack[2 * nNode + SPNodeCountforSending] = oldMod;
-		}
-
-		SPNodeCountforSending++;
+		elementCount++;
 
 	}
 
-	if (numberOfSPNode != SPNodeCountforSending) {
+	if (numberOfSPNode != elementCount) {
 		printf(
-				"something is not right in prioritize_movespnodes, for rank:%d, numberOfSPNode:%d does not match SPNodeCountforSending:%d\n",
-				rank, numberOfSPNode, SPNodeCountforSending);
+				"something is not right in prioritize_movespnodes, for rank:%d, numberOfSPNode:%d does not match elementCount:%d\n",
+				rank, numberOfSPNode, elementCount);
 	}
 
 	intSendPack[intPackSize - 1] = SPNodeCountforSending;
@@ -2409,6 +2359,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	int nNextActive = 0;
 	int SPNodeCountforSending = 0;
+	int elementCount = 0;
 
 	bool incrementElementCount = false;
 	set<int> emptyModuleSet;
@@ -2583,44 +2534,22 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 					moduleUpdate = true;
 
-					intSendPack[SPNodeCountforSending] = i;
-					// we need to update bestResult with currentResult.
-
-					//save old module id
-					intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
 					//save new module id
-					bestResult.newModule = intSendPack[2 * nNode
-							+ SPNodeCountforSending] = currentResult.newModule;
+					bestResult.newModule = currentResult.newModule;
 
-					bestResult.diffCodeLen =
-							doubleSendPack[SPNodeCountforSending] =
-									currentResult.diffCodeLen;
-					//bestResult.diffCodeLen = currentResult.diffCodeLen;
-					//bestResult.newModule = currentResult.newModule;
-					bestResult.sumPr1 = doubleSendPack[1 * nActive
-							+ SPNodeCountforSending] = currentResult.sumPr1;
-					//bestResult.sumPr1 = currentResult.sumPr1;
-					bestResult.sumPr2 = doubleSendPack[2 * nActive
-							+ SPNodeCountforSending] = currentResult.sumPr2;
-					//bestResult.sumPr2 = currentResult.sumPr2;
-					bestResult.exitPr1 = doubleSendPack[3 * nActive
-							+ SPNodeCountforSending] = currentResult.exitPr1;
-					//bestResult.exitPr1 = currentResult.exitPr1;
-					bestResult.exitPr2 = doubleSendPack[4 * nActive
-							+ SPNodeCountforSending] = currentResult.exitPr2;
-					//bestResult.exitPr2 = currentResult.exitPr2;
+					bestResult.diffCodeLen = currentResult.diffCodeLen;
+
+					bestResult.sumPr1 = currentResult.sumPr1;
+
+					bestResult.sumPr2 = currentResult.sumPr2;
+
+					bestResult.exitPr1 = currentResult.exitPr1;
+
+					bestResult.exitPr2 = currentResult.exitPr2;
+
 					bestResult.newSumExitPr = currentResult.newSumExitPr;
-					//bestResult.newSumExitPr = currentResult.newSumExitPr;
 
 				}
-			} else { //this element/vertex is not moving to a new module, so both the newModule and the oldModule are same for this element
-
-				moduleUpdate = true;
-
-				intSendPack[SPNodeCountforSending] = i;
-				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * nNode + SPNodeCountforSending] =
-						bestResult.newModule;
 			}
 		}
 
@@ -2669,14 +2598,27 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 					nEmptyMod++;
 					nModule--;
 				}
-				/*				if (iteration == 0) {
-				 printf("this is called for rank:%d\n", rank);
-				 }*/
 
+				//the following code is for sending module update across processors
+				intSendPack[SPNodeCountforSending] = i;
+				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
+				intSendPack[2 * nNode + SPNodeCountforSending] =
+						bestResult.newModule;
+				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
+				doubleSendPack[1 * nActive + SPNodeCountforSending] =
+						bestResult.sumPr1;
+				doubleSendPack[2 * nActive + SPNodeCountforSending] =
+						bestResult.sumPr2;
+				doubleSendPack[3 * nActive + SPNodeCountforSending] =
+						bestResult.exitPr1;
+				doubleSendPack[4 * nActive + SPNodeCountforSending] =
+						bestResult.exitPr2;
 				sumAllExitPr = bestResult.newSumExitPr;
 
+				SPNodeCountforSending++;
+
 				codeLengthReduction += bestResult.diffCodeLen;
-				//codeLength += bestResult.diffCodeLen;
+
 				numMoved += spMembers;
 
 				// update activeNodes and isActives vectors.
@@ -2691,20 +2633,14 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			}
 		}
 
-		if (moduleUpdate == false) {
-			intSendPack[SPNodeCountforSending] = i;
-			intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
-			intSendPack[2 * nNode + SPNodeCountforSending] = oldMod;
-		}
-
-		SPNodeCountforSending++;
+		elementCount++;
 	}
 
-	if (numberOfSPNode != SPNodeCountforSending) {
+	if (numberOfSPNode != elementCount) {
 		if (iteration == 0) {
 			printf(
-					"something is not right in prioritize_movespnodes, for rank:%d, numberOfSPNode:%d does not match SPNodeCountforSending:%d\n",
-					rank, numberOfSPNode, SPNodeCountforSending);
+					"something is not right in prioritize_movespnodes, for rank:%d, numberOfSPNode:%d does not match elementCount:%d\n",
+					rank, numberOfSPNode, elementCount);
 		}
 	}
 
@@ -3886,10 +3822,11 @@ void Network::convertModulesToSuperNodes(int tag) {
 		int currentSPNodeTotalLinks = 0;
 
 		for (int j = 0; j < numNodesInSPNode; j++) {
-// Calculate newOutLinks from a superNode to other superNodes.
+
+			// Calculate newOutLinks from a superNode to other superNodes.
+
 			Node* nd = superNodes[i].members[j];
 			int nOutEdge = nd->outLinks.size();
-//int totalLinksCount = 0;
 
 			for (int k = 0; k < nOutEdge; k++) {
 				toSPNode = modToSPNode[nodes[nd->outLinks[k].first].ModIdx()];
