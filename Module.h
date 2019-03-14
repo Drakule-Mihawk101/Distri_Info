@@ -226,7 +226,7 @@ public:
 	void initiate(int numTh);
 	//void calculateSteadyState();	// eigenvector();
 	void calculateSteadyState(int numTh);	// eigenvector();
-	void calibrate(int numTh);
+	void calibrate(int numTh, int tag);
 	int move(int iteration);
 	int prioritize_move(double vThresh, int iteration, bool inWhile);
 	int parallelMove(int numTh, double & tUpdate);

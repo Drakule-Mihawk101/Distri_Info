@@ -454,7 +454,7 @@ int Network::move(int iteration) {
 	int rank;
 	int elementCount = 0;
 	const unsigned int intPackSize = 3 * nNode + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 7 * nNode;
+	const unsigned int doublePackSize = 5 * nNode + 3;
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -472,6 +472,10 @@ int Network::move(int iteration) {
 	int start, end;
 	findAssignedPart(&start, &end, nNode, size, rank);
 
+	printf(
+			"This is for memory optimization in rank:%d where nActive:%d in move, start:%d, end:%d\n",
+			rank, nNode, start, end);
+
 	int numberOfElements = end - start;	//number of elements assigned to this processor
 
 	int numMoved = 0;	// the counter for the number of movements.
@@ -481,6 +485,14 @@ int Network::move(int iteration) {
 
 	double* doubleSendPack = new double[doublePackSize]();// multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
 	double* doubleReceivePack = new double[doublePackSize]();
+
+	if (!intSendPack || !intReceivePack || !doubleSendPack
+			|| !doubleReceivePack) {
+		printf(
+				"ERROR in move: process:%d does not have sufficient memory, process exiting...\n",
+				rank);
+		exit(1);
+	}
 
 	double codeLengthReduction = 0.0;
 	double currentSumAllExitPr = sumAllExitPr;
@@ -806,8 +818,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 	int rank;
 	int nActive = 0;
 	int elementCount = 0;
-	const unsigned int intPackSize = 3 * nNode + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 7 * nNode;
+
 	set<int> emptyModuleSet;
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -816,12 +827,10 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 	printf("*************entering prioritize move:rank:%d*************\n",
 			rank);
 
-//if (rank == 0) {
-
-//}
-//MPI_Bcast(&nActive, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
 	nActive = activeNodes.size();
+
+	const unsigned int intPackSize = 3 * nActive + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int doublePackSize = 5 * nActive + 3;
 
 	int* randomGlobalArray = new int[nActive]();
 
@@ -832,16 +841,26 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 	int start, end;
 	findAssignedPart(&start, &end, nActive, size, rank);
 
+	printf(
+			"This is for memory optimization in rank:%d where nActive:%d in prioritize_move, start:%d, end:%d\n",
+			rank, nActive, start, end);
+
 	int numberOfElements = end - start;	//number of elements assigned to this processor
 
 // Generate random sequential order of active nodes.
-	int* intSendPack = new int[intPackSize]();// multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
-	int* intReceivePack = new int[intPackSize]();
+	int* intSendPack = new (nothrow) int[intPackSize]();// multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
+	int* intReceivePack = new (nothrow) int[intPackSize]();
 
-	double* doubleSendPack = new double[doublePackSize]();// multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
-	double* doubleReceivePack = new double[doublePackSize]();
+	double* doubleSendPack = new (nothrow) double[doublePackSize]();// multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
+	double* doubleReceivePack = new (nothrow) double[doublePackSize]();
 
-	int l = nActive / size;
+	if (!intSendPack || !intReceivePack || !doubleSendPack
+			|| !doubleReceivePack) {
+		printf(
+				"ERROR in prioritize_move: process:%d does not have sufficient memory, process exiting...\n",
+				rank);
+		exit(1);
+	}
 
 	double codeLengthReduction = 0.0;
 	double currentSumAllExitPr = sumAllExitPr;
@@ -849,13 +868,6 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 	int numMoved = 0;
 
 	elementCount = 0;
-	int emptyModCount = 0;
-	int nModuleCount = 0;
-//emptyMods[rank][0] = emptyModCount;	//this is to keep the number of emptyMod for each of the process
-
-	if (iteration == 0) {
-		printf("start:%d, end:%d, rank:%d\n", start, end, rank);
-	}
 
 	for (int i = start; i < end; i++) {
 		int counter = 0;
@@ -1054,8 +1066,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			// the following code block is for sending information of updated vertex across the other processes
 
 			intSendPack[numMoved] = i;
-			intSendPack[1 * nNode + numMoved] = oldMod;
-			intSendPack[2 * nNode + numMoved] = bestResult.newModule;
+			intSendPack[1 * nActive + numMoved] = oldMod;
+			intSendPack[2 * nActive + numMoved] = bestResult.newModule;
 
 			doubleSendPack[numMoved] = bestResult.diffCodeLen;
 			doubleSendPack[1 * nActive + numMoved] = bestResult.sumPr1;
@@ -1116,8 +1128,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 				int nodeIndex = intReceivePack[z];
 
 				Node& nod = nodes[randomGlobalArray[nodeIndex]];
-				int oldModule = intReceivePack[1 * nNode + z];
-				int newModule = intReceivePack[2 * nNode + z];
+				int oldModule = intReceivePack[1 * nActive + z];
+				int newModule = intReceivePack[2 * nActive + z];
 
 				//we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
 				//int nodeIndex = nod.ID();
@@ -2008,12 +2020,20 @@ int Network::moveSuperNodes(int iteration) {
 	}
 
 	const unsigned int intPackSize = 3 * nNode + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 7 * nNode;
+	const unsigned int doublePackSize = 5 * nNode + 3;
 	int* intSendPack = new int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
 	int* intReceivePack = new int[intPackSize]();
 
 	double* doubleSendPack = new double[doublePackSize](); // multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
 	double* doubleReceivePack = new double[doublePackSize]();
+
+	if (!intSendPack || !intReceivePack || !doubleSendPack
+			|| !doubleReceivePack) {
+		printf(
+				"ERROR in moveSuperNodes: process:%d does not have sufficient memory, process exiting...\n",
+				rank);
+		exit(1);
+	}
 
 	double codeLengthReduction = 0.0;
 	double currentSumAllExitPr = sumAllExitPr;
@@ -2025,6 +2045,10 @@ int Network::moveSuperNodes(int iteration) {
 	int start, end;
 
 	findAssignedPart(&start, &end, nSuperNodes, size, rank);
+
+	printf(
+			"This is for memory optimization in rank:%d where nSuperNodes:%d, start:%d, end:%d\n",
+			rank, nSuperNodes, start, end);
 
 	int numberOfSPNode = end - start; //number of elements assigned to this processor
 
@@ -2381,13 +2405,22 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	}
 
 // Generate random sequential order of active nodes.
-	const unsigned int intPackSize = 3 * nNode + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 7 * nNode;
-	int* intSendPack = new int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
-	int* intReceivePack = new int[intPackSize]();
+	const unsigned int intPackSize = 3 * nActive + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int doublePackSize = 5 * nActive + 3;
 
-	double* doubleSendPack = new double[doublePackSize](); // multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
-	double* doubleReceivePack = new double[doublePackSize]();
+	int* intSendPack = new (nothrow) int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
+	int* intReceivePack = new (nothrow) int[intPackSize]();
+
+	double* doubleSendPack = new (nothrow) double[doublePackSize](); // multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
+	double* doubleReceivePack = new (nothrow) double[doublePackSize]();
+
+	if (!intSendPack || !intReceivePack || !doubleSendPack
+			|| !doubleReceivePack) {
+		printf(
+				"ERROR in prioritize_moveSPnodes: process:%d does not have sufficient memory, process exiting...\n",
+				rank);
+		exit(1);
+	}
 
 	double codeLengthReduction = 0.0;
 	double currentSumAllExitPr = sumAllExitPr;
@@ -2398,6 +2431,10 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	int start, end;
 	findAssignedPart(&start, &end, nActive, size, rank);
+
+	printf(
+			"This is for memory optimization in rank:%d where nActive:%d in prioritize_moveSPnodes, start:%d, end:%d\n",
+			rank, nActive, start, end);
 
 	int numberOfSPNode = end - start; //number of elements assigned to this processor
 
@@ -2601,8 +2638,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				//the following code is for sending module update across processors
 				intSendPack[SPNodeCountforSending] = i;
-				intSendPack[1 * nNode + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * nNode + SPNodeCountforSending] =
+				intSendPack[1 * nActive + SPNodeCountforSending] = oldMod;
+				intSendPack[2 * nActive + SPNodeCountforSending] =
 						bestResult.newModule;
 				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
 				doubleSendPack[1 * nActive + SPNodeCountforSending] =
@@ -2674,8 +2711,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				int spMembers = nod.members.size();
 
-				int oldModule = intReceivePack[1 * nNode + z];
-				int newModule = intReceivePack[2 * nNode + z];
+				int oldModule = intReceivePack[1 * nActive + z];
+				int newModule = intReceivePack[2 * nActive + z];
 
 				if (oldModule != newModule) {
 
