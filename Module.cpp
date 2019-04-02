@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <iterator>
 #include <cmath>
+#include <malloc.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -170,9 +171,14 @@ void Network::findDanglingNodes() {
 }
 
 //void Network::initiate() {
-void Network::initiate(int numTh) {
+void Network::initiate(int numTh, double& total_time_initiate,
+		double& total_time_calibrate) {
 
 	int size, rank;
+
+	struct timeval startIni, endIni;
+
+	gettimeofday(&startIni, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -211,7 +217,14 @@ void Network::initiate(int numTh) {
 			<< elapsedTimeInSec(startT, endT) << " (sec)" << endl;
 
 	gettimeofday(&startT, NULL);
-	calculateSteadyState(numTh);
+
+	double total_time_calcSteady = 0.0;
+
+	calculateSteadyState(numTh, total_time_calcSteady);
+
+	printf("time for calculateSteadyState in rank:%d is %f\n", rank,
+			total_time_calcSteady);
+
 	gettimeofday(&endT, NULL);
 	cout << "Time for calculating steady state of nodes (eigenvector): "
 			<< elapsedTimeInSec(startT, endT) << " (sec)" << endl;
@@ -270,19 +283,18 @@ void Network::initiate(int numTh) {
 
 	nModule = nNode;
 
-	gettimeofday(&startT, NULL);
-	calibrate(numTh, 0); //sending tag 0 to indicate the calibrate call from initiate function
-	gettimeofday(&endT, NULL);
-	printf("Time for calculating initial code length in rank:%d is %f\n", rank,
-			elapsedTimeInSec(startT, endT));
+	calibrate(numTh, 0, total_time_calibrate); //sending tag 0 to indicate the calibrate call from initiate function
 
+	gettimeofday(&endIni, NULL);
+
+	total_time_initiate += elapsedTimeInSec(startIni, endIni);
 }
 
 // calculating steady state of nodes by Power Iteration Method.
 // same as Greedy::eigenvector() in Infomap implementation.
 // Modify for the design of this implementation.
 
-void Network::calculateSteadyState(int numTh) {
+void Network::calculateSteadyState(int numTh, double& total_time_calcSteady) {
 	// initial probability distribution = 1 / N.
 
 	int size;
@@ -290,6 +302,9 @@ void Network::calculateSteadyState(int numTh) {
 	int tag = 99999999;
 
 	vector<double> size_tmp = vector<double>(nNode, 1.0 / nNode);
+
+	struct timeval startCalc, endCalc;
+	gettimeofday(&startCalc, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -377,23 +392,26 @@ void Network::calculateSteadyState(int numTh) {
 
 	} while ((iter < 200) && (sqdiff > 1.0e-15 || iter < 50));
 
+	gettimeofday(&endCalc, NULL);
+
+	total_time_calcSteady += elapsedTimeInSec(startCalc, endCalc);
+
 	cout << "Calculating flow done in " << iter << " iterations!" << endl;
 }
 
 // This function calculate current codeLength.
 // This implementation is modified version of infomap implementation.
-void Network::calibrate(int numTh, int tag) {
+void Network::calibrate(int numTh, int tag, double& total_time_calibrate) {
 	//This is the calculation of Equation (4) in the paper.
 
 	int size;
 	int rank;
 
+	struct timeval startCali, endCali;
+	gettimeofday(&startCali, NULL);
+
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-	struct timeval startT, endT;
-
-	gettimeofday(&startT, NULL);
 
 	double send_exit_stay_sum[3] = { 0.0, 0.0, 0.0 };
 	double receive_exit_stay_sum[3] = { 0.0, 0.0, 0.0 };
@@ -432,13 +450,8 @@ void Network::calibrate(int numTh, int tag) {
 	codeLength = sumExit_log_sumExit - 2.0 * sum_exit_log_exit
 			+ sum_stay_log_stay - allNodes_log_allNodes;
 
-	gettimeofday(&endT, NULL);
-
-	if (tag == 0) {
-		printf(
-				"inside calibrate function time for calculating the codelength in rank:%d is %f and codelength:%f\n",
-				rank, elapsedTimeInSec(startT, endT), codeLength);
-	}
+	gettimeofday(&endCali, NULL);
+	total_time_calibrate += elapsedTimeInSec(startCali, endCali);
 }
 
 /*
@@ -449,16 +462,21 @@ void Network::calibrate(int numTh, int tag) {
  *	
  *	return: the number of moves.
  */
-int Network::move(int iteration) {
+int Network::move(int iteration, double& total_time_move,
+		int& total_iterations_move) {
 
 	int size;
 	int rank;
 	int elementCount = 0;
+	int mpi_tag = 3333 + iteration;
+	srand(time(0));
+
+	struct timeval startMove, endMove;
+
+	gettimeofday(&startMove, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-	printf("*************entering move:rank:%d*************\n", rank);
 
 // Generate random sequential order of nodes.
 
@@ -471,18 +489,23 @@ int Network::move(int iteration) {
 
 	int* randomGlobalArray = new int[nNode]();
 
-	for (int i = 0; i < nNode; i++) {
-		randomGlobalArray[i] = i;
-	}
-
 	int start, end;
 	findAssignedPart(&start, &end, nNode, size, rank);
 
-	printf(
-			"This is for memory optimization in rank:%d where nActive:%d in move, start:%d, end:%d\n",
-			rank, nNode, start, end);
-
 	int numberOfElements = end - start;	//number of elements assigned to this processor
+
+	for (int i = start; i < end; i++) {
+		randomGlobalArray[i] = i;
+	}
+
+	for (int i = start; i < end; i++) {
+		int pretarget = rand() % numberOfElements;
+		int target = start + pretarget;
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[i];
+		randomGlobalArray[i] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
+	}
 
 	int numMoved = 0;	// the counter for the number of movements.
 
@@ -511,7 +534,8 @@ int Network::move(int iteration) {
 		int counter = 0;
 		bool moduleUpdate = false;
 
-		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
+		int vertexIndex = randomGlobalArray[i];
+		Node& nd = nodes[vertexIndex];// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
@@ -703,7 +727,7 @@ int Network::move(int iteration) {
 
 			// the following code block is for sending information of updated vertex across the other processes
 
-			intSendPack[numMoved] = i;
+			intSendPack[numMoved] = vertexIndex;
 			intSendPack[1 * stripSize + numMoved] = oldMod;
 			intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
 
@@ -737,14 +761,13 @@ int Network::move(int iteration) {
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
-					iteration, intReceivePack, intPackSize, MPI_INT, processId,
-					iteration,
+			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
+					intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
-					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
-					processId, iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
+					processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			int totalElementSentFromSender = intReceivePack[intPackSize - 1];
 
@@ -755,7 +778,7 @@ int Network::move(int iteration) {
 
 				int nodeIndex = intReceivePack[z];
 
-				Node& nod = nodes[randomGlobalArray[nodeIndex]];
+				Node& nod = nodes[nodeIndex];
 				int oldModule = intReceivePack[1 * stripSize + z];
 				int newModule = intReceivePack[2 * stripSize + z];
 
@@ -804,13 +827,16 @@ int Network::move(int iteration) {
 		}
 	}
 
-	printf("*************leaving prioritize move:rank:%d*************\n", rank);
-
+	total_iterations_move++;
 	delete[] randomGlobalArray;
 	delete[] intSendPack;
 	delete[] intReceivePack;
 	delete[] doubleSendPack;
 	delete[] doubleReceivePack;
+
+	gettimeofday(&endMove, NULL);
+
+	total_time_move += elapsedTimeInSec(startMove, endMove);
 
 	return numMoved;
 }
@@ -820,20 +846,25 @@ int Network::move(int iteration) {
  *
  *	return: the number of movements.
  */
-int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
+int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
+		double& total_time_prioritize_move, int& total_iterations_priorMove) {
 
 	int size;
 	int rank;
 	int nActive = 0;
 	int elementCount = 0;
+	int mpi_tag = 4444 + iteration;
+
+	srand(time(0));
 
 	set<int> emptyModuleSet;
 
+	struct timeval startPrioMove, endPrioMove;
+
+	gettimeofday(&startPrioMove, NULL);
+
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-	printf("*************entering prioritize move:rank:%d*************\n",
-			rank);
 
 	nActive = activeNodes.size();
 
@@ -841,28 +872,39 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 	int stripSize = ceil(totalElemenets / size) + 1;
 
-	const unsigned int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 5 * stripSize + 3;
+	const int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const int doublePackSize = 5 * stripSize + 3;
 
 	int* randomGlobalArray = new int[nActive]();
 
-	for (int i = 0; i < nActive; i++) {
-		randomGlobalArray[i] = activeNodes[i];
-	}
-
 	int start, end;
-	findAssignedPart(&start, &end, nActive, size, rank);
 
-	printf(
-			"This is for memory optimization in rank:%d where nActive:%d in prioritize_move, start:%d, end:%d\n",
-			rank, nActive, start, end);
+	findAssignedPart(&start, &end, nActive, size, rank);
 
 	int numberOfElements = end - start;	//number of elements assigned to this processor
 
+	for (int i = start; i < end; i++) {
+		randomGlobalArray[i] = activeNodes[i];
+	}
+
+	for (int j = start; j < end; j++) {
+		int preTarget = rand() % numberOfElements;
+		int target = start + preTarget;
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[j];
+		randomGlobalArray[j] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
+	}
+
+	if (iteration == 0) {
+		for (int i = start; i < end; i++) {
+			printf("Checking olala rank:%d, randomGlobalArray[%d]:%d\n", rank,
+					i, randomGlobalArray[i]);
+		}
+	}
 // Generate random sequential order of active nodes.
 	int* intSendPack = new (nothrow) int[intPackSize]();// multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
 	int* intReceivePack = new (nothrow) int[intPackSize]();
-
 	double* doubleSendPack = new (nothrow) double[doublePackSize]();// multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
 	double* doubleReceivePack = new (nothrow) double[doublePackSize]();
 
@@ -884,7 +926,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 	for (int i = start; i < end; i++) {
 		int counter = 0;
 		bool moduleUpdate = false;
-		Node& nd = nodes[randomGlobalArray[i]];	// look at i_th Node of the random sequential order.
+		int vertexIndex = randomGlobalArray[i];
+		Node& nd = nodes[vertexIndex];// look at i_th Node of the random sequential order.
 		int oldMod = nd.ModIdx();
 
 		int nModLinks = 0;// The number of links to/from between the current node and other modules.
@@ -1077,7 +1120,14 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 			// the following code block is for sending information of updated vertex across the other processes
 
-			intSendPack[numMoved] = i;
+			intSendPack[numMoved] = vertexIndex;
+
+			if (iteration == 0) {
+				printf(
+						"Tracking move for rank:%d, the vertex Id is:%d,the new module is:%d, the old module is:%d\n",
+						rank, vertexIndex, bestResult.newModule, oldMod);
+			}
+
 			intSendPack[1 * stripSize + numMoved] = oldMod;
 			intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
 
@@ -1097,12 +1147,15 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 			// update activeNodes and isActives vectors.
 			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 			for (link_iterator linkIt = nd.outLinks.begin();
-					linkIt != nd.outLinks.end(); linkIt++)
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+					linkIt != nd.outLinks.end(); linkIt++) {
 
-			for (link_iterator linkIt = nd.inLinks.begin();
-					linkIt != nd.inLinks.end(); linkIt++)
 				isActives[linkIt->first] = 1;	// set as an active nodes.
+			}
+			for (link_iterator linkIt = nd.inLinks.begin();
+					linkIt != nd.inLinks.end(); linkIt++) {
+
+				isActives[linkIt->first] = 1;	// set as an active nodes.
+			}
 		}
 
 		elementCount++;
@@ -1121,14 +1174,14 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
-					iteration, intReceivePack, intPackSize, MPI_INT, processId,
-					iteration,
+
+			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
+					intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
-					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
-					processId, iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
+					processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			int totalElementSentFromSender = intReceivePack[intPackSize - 1];
 
@@ -1139,7 +1192,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 
 				int nodeIndex = intReceivePack[z];
 
-				Node& nod = nodes[randomGlobalArray[nodeIndex]];
+				Node& nod = nodes[nodeIndex];
 				int oldModule = intReceivePack[1 * stripSize + z];
 				int newModule = intReceivePack[2 * stripSize + z];
 
@@ -1189,17 +1242,26 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 					// update activeNodes and isActives vectors.
 					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
 					for (link_iterator linkIt = nod.outLinks.begin();
-							linkIt != nod.outLinks.end(); linkIt++)
+							linkIt != nod.outLinks.end(); linkIt++) {
+						isActives[linkIt->first] = 1;// set as an active nodes.
+					}
+					for (link_iterator linkIt = nod.inLinks.begin();
+							linkIt != nod.inLinks.end(); linkIt++) {
 						isActives[linkIt->first] = 1;// set as an active nodes.
 
-					for (link_iterator linkIt = nod.inLinks.begin();
-							linkIt != nod.inLinks.end(); linkIt++)
-						isActives[linkIt->first] = 1;// set as an active nodes.
+					}
 				}
 			}
 
 		}
 
+	}
+
+	if (iteration == 0) {
+		for (int i = 0; i < nNode; i++) {
+			printf("distributed output in rank:%d, where i:%d, module:%d\n",
+					rank, i, nodes[i].modIdx);
+		}
 	}
 
 	vector<int>().swap(activeNodes);
@@ -1210,13 +1272,17 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile) {
 		}
 	}
 
-	printf("*************leaving prioritize move:rank:%d*************\n", rank);
+	total_iterations_priorMove++;
 
 	delete[] randomGlobalArray;
 	delete[] intSendPack;
 	delete[] intReceivePack;
 	delete[] doubleSendPack;
 	delete[] doubleReceivePack;
+
+	gettimeofday(&endPrioMove, NULL);
+
+	total_time_prioritize_move += elapsedTimeInSec(startPrioMove, endPrioMove);
 
 	return numMoved;
 }
@@ -2016,15 +2082,32 @@ int Network::moveSuperNodes(int iteration) {
 	int size;
 	int rank;
 
+	struct timeval startMoveSuperNodes, endMoveSuperNodes;
+
+	gettimeofday(&startMoveSuperNodes, NULL);
+
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 // Generate random sequential order of nodes.
-
 	int* randomGlobalArray = new int[nSuperNodes]();
 
-	for (int i = 0; i < nSuperNodes; i++) {
+	int start, end;
+	findAssignedPart(&start, &end, nSuperNodes, size, rank);
+
+	int numberOfSPNode = end - start; //number of elements assigned to this processor
+
+	for (int i = start; i < end; i++) {
 		randomGlobalArray[i] = i;
+	}
+
+	for (int i = start; i < end; i++) {
+		int pretarget = rand() % numberOfSPNode;
+		int target = start + pretarget;
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[i];
+		randomGlobalArray[i] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
 	}
 
 	double totalElemenets = nSuperNodes;
@@ -2055,20 +2138,11 @@ int Network::moveSuperNodes(int iteration) {
 
 	SPNodeCountforSending = 0;
 
-	int start, end;
-
-	findAssignedPart(&start, &end, nSuperNodes, size, rank);
-
-	printf(
-			"This is for memory optimization in rank:%d where nSuperNodes:%d, start:%d, end:%d\n",
-			rank, nSuperNodes, start, end);
-
-	int numberOfSPNode = end - start; //number of elements assigned to this processor
-
 // Move each node to one of its neighbor modules in random sequential order.
 	for (int i = start; i < end; i++) {
 
-		SuperNode& nd = superNodes[randomGlobalArray[i]]; // look at i_th Node of the random sequential order.
+		int superNodeIndex = randomGlobalArray[i];
+		SuperNode& nd = superNodes[superNodeIndex]; // look at i_th Node of the random sequential order.
 
 		bool moduleUpdate = false;
 
@@ -2260,7 +2334,7 @@ int Network::moveSuperNodes(int iteration) {
 				}
 
 				//the following code is for sending module update across processors
-				intSendPack[SPNodeCountforSending] = i;
+				intSendPack[SPNodeCountforSending] = superNodeIndex;
 				intSendPack[1 * stripSize + SPNodeCountforSending] = oldMod;
 				intSendPack[2 * stripSize + SPNodeCountforSending] =
 						bestResult.newModule;
@@ -2314,9 +2388,8 @@ int Network::moveSuperNodes(int iteration) {
 			codeLength += doubleReceivePack[doublePackSize - 2];
 
 			for (int z = 0; z < totalSPNodefromSender; z++) {
-
 				int nodeIndex = intReceivePack[z];
-				SuperNode& nod = superNodes[randomGlobalArray[nodeIndex]]; // I didn't need to send the indices from the processes because every process has already this information from counts and displs
+				SuperNode& nod = superNodes[nodeIndex]; // I didn't need to send the indices from the processes because every process has already this information from counts and displs
 
 				int spMembers = nod.members.size();
 
@@ -2372,6 +2445,14 @@ int Network::moveSuperNodes(int iteration) {
 		}
 	}
 
+	delete[] randomGlobalArray;
+	delete[] intSendPack;
+	delete[] intReceivePack;
+	delete[] doubleSendPack;
+	delete[] doubleReceivePack;
+
+	gettimeofday(&endMoveSuperNodes, NULL);
+
 	return numMoved;
 }
 
@@ -2394,15 +2475,23 @@ void Network::showOutput(int iteration, int prioritizeSPMove, bool inWhile) {
  */
 
 int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
-		bool inWhile) {
+		bool inWhile, double& total_time_prioritize_Spmove,
+		int& total_iterations_priorSPNodes) {
 
 	int SPNodeCountforSending = 0;
 	int elementCount = 0;
+	int mpi_tag = 5555 + iteration;
+
+	srand(time(0));
 
 	set<int> emptyModuleSet;
 
 	int size;
 	int rank;
+
+	struct timeval startPrio_moveSPnodes, endPrio_moveSPnodes;
+
+	gettimeofday(&startPrio_moveSPnodes, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -2415,8 +2504,23 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	int* randomGlobalArray = new int[nActive]();
 
-	for (int i = 0; i < nActive; i++) {
+	int start, end;
+
+	findAssignedPart(&start, &end, nActive, size, rank);
+
+	int numberOfSPNode = end - start; //number of elements assigned to this processor
+
+	for (int i = start; i < end; i++) {
 		randomGlobalArray[i] = activeNodes[i];
+	}
+
+	for (int j = start; j < end; j++) {
+		int preTarget = rand() % numberOfSPNode;
+		int target = start + preTarget;
+		// swap numbers between i and target.
+		int tmp = randomGlobalArray[j];
+		randomGlobalArray[j] = randomGlobalArray[target];
+		randomGlobalArray[target] = tmp;
 	}
 
 // Generate random sequential order of active nodes.
@@ -2444,20 +2548,10 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	SPNodeCountforSending = 0;
 
-	int start, end;
-	findAssignedPart(&start, &end, nActive, size, rank);
-
-	printf(
-			"This is for memory optimization in rank:%d where nActive:%d in prioritize_moveSPnodes, start:%d, end:%d\n",
-			rank, nActive, start, end);
-
-	int numberOfSPNode = end - start; //number of elements assigned to this processor
-
 // Move each node to one of its neighbor modules in random sequential order.
 	for (int i = start; i < end; i++) {
-
-		SuperNode& nd = superNodes[randomGlobalArray[i]]; // look at i_th Node of the random sequential order.
-
+		int superNodeIndex = randomGlobalArray[i];
+		SuperNode& nd = superNodes[superNodeIndex]; // look at i_th Node of the random sequential order.
 		bool moduleUpdate = false;
 
 		int oldMod = nd.ModIdx();
@@ -2652,7 +2746,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 				}
 
 				//the following code is for sending module update across processors
-				intSendPack[SPNodeCountforSending] = i;
+				intSendPack[SPNodeCountforSending] = superNodeIndex;
 				intSendPack[1 * stripSize + SPNodeCountforSending] = oldMod;
 				intSendPack[2 * stripSize + SPNodeCountforSending] =
 						bestResult.newModule;
@@ -2705,14 +2799,13 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
-			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId,
-					iteration, intReceivePack, intPackSize, MPI_INT, processId,
-					iteration,
+			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
+					intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
-					iteration, doubleReceivePack, doublePackSize, MPI_DOUBLE,
-					processId, iteration, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+					mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
+					processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
 
 			int totalSPNodefromSender = intReceivePack[intPackSize - 1];
 
@@ -2722,7 +2815,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			for (int z = 0; z < totalSPNodefromSender; z++) {
 
 				int nodeIndex = intReceivePack[z];
-				SuperNode& nod = superNodes[randomGlobalArray[nodeIndex]];// I didn't need to send the indices from the processes because every process has already this information from counts and displs
+				SuperNode& nod = superNodes[nodeIndex];	// I didn't need to send the indices from the processes because every process has already this information from counts and displs
 
 				int spMembers = nod.members.size();
 
@@ -2798,11 +2891,18 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		}
 	}
 
+	total_iterations_priorSPNodes++;
+
 	delete[] randomGlobalArray;
 	delete[] intSendPack;
 	delete[] intReceivePack;
 	delete[] doubleSendPack;
 	delete[] doubleReceivePack;
+
+	gettimeofday(&endPrio_moveSPnodes, NULL);
+
+	total_time_prioritize_Spmove += elapsedTimeInSec(startPrio_moveSPnodes,
+			endPrio_moveSPnodes);
 
 	return numMoved;
 }
@@ -3637,9 +3737,15 @@ int Network::prioritize_parallelMoveSPnodes(int numTh, double& tSequential,
 /**
  *	This function will update members vector in modules correspondingly.
  */
-void Network::updateMembersInModule() {
+void Network::updateMembersInModule(double& total_time_updateMembers,
+		int& total_iterations_updateMembers) {
 
 	int size, rank;
+
+	struct timeval startUpdateMembers, endUpdateMembers;
+
+	gettimeofday(&startUpdateMembers, NULL);
+
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -3661,6 +3767,13 @@ void Network::updateMembersInModule() {
 	for (int i = 0; i < nNode; i++) {
 		modules[nodes[i].ModIdx()].members.push_back(&nodes[i]);
 	}
+
+	gettimeofday(&endUpdateMembers, NULL);
+
+	total_time_updateMembers += elapsedTimeInSec(startUpdateMembers,
+			endUpdateMembers);
+	total_iterations_updateMembers++;
+
 }
 
 void Network::updateSPMembersInModule() {
@@ -3730,19 +3843,20 @@ void Network::updateCodeLength(int numTh, bool isSPNode) {
 }
 
 // calculate exit-probability based on node information and current module assignment.
-double Network::calculateCodeLength() {
+double Network::calculateCodeLength(double& total_time_calcCodelen) {
 
 	int size, rank;
 	int startIndex, endIndex;
+
+	struct timeval startCalculateCode, endCalculateCode;
+
+	gettimeofday(&startCalculateCode, NULL);
+
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 	double send_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
 	double receive_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
-
-	struct timeval start, end;
-
-	gettimeofday(&start, NULL);
 
 	findAssignedPart(&startIndex, &endIndex, nNode, size, rank);
 
@@ -3799,7 +3913,10 @@ double Network::calculateCodeLength() {
 	double computedCodeLength = pLogP(tempSumAllExit) - 2.0 * exit_log_exit
 			+ stay_log_stay - allNodes_log_allNodes;
 
-	gettimeofday(&end, NULL);
+	gettimeofday(&endCalculateCode, NULL);
+
+	total_time_calcCodelen += elapsedTimeInSec(startCalculateCode,
+			endCalculateCode);
 
 	return computedCodeLength;
 }
@@ -3807,17 +3924,19 @@ double Network::calculateCodeLength() {
 // similar function of Greedy::level() in the original infomap_dir implementation.
 // make a group of nodes as a Node (here, SuperNode)
 // Granularity of the network is same but a group of nodes move together instead of moving individually.
-void Network::convertModulesToSuperNodes(int tag) {
+void Network::convertModulesToSuperNodes(int tag,
+		double& total_time_convertModules,
+		int& total_iterations_convertModules) {
 
 //initialize superNodes vector for updating w.r.t. the current module status.
-
-	const unsigned int toSpNodesPackSize = nEdge + 1;
-	const unsigned int totalEdges = nEdge;
-	const unsigned int PackSize = 2 * nNode;
 
 	vector<SuperNode>().swap(superNodes);
 	superNodes.reserve(nModule);
 // parallelization starting from here for now
+
+	struct timeval startConvertModules, endConvertModules;
+
+	gettimeofday(&startConvertModules, NULL);
 
 	int size, rank;
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -3825,21 +3944,11 @@ void Network::convertModulesToSuperNodes(int tag) {
 
 	int numSPNodesforCurrentRank;
 
-	double linkWeightstoSpNodesSend[totalEdges];
-	double linkWeightstoSpNodesReceive[totalEdges];
-
-	int toSpNodesSend[toSpNodesPackSize];
-	int toSpNodesReceive[toSpNodesPackSize];
-
-	int spNodeCountTrackerSend[PackSize];
-	int spNodeCountTrackerReceive[PackSize];
-
 	vector<unsigned int> modToSPNode(nNode);// indicate corresponding superNode ID from each module.
 
 // I am not going to parallelize the following code snippet for now, but will parallelize later
 	int idx = 0;
 	for (unsigned int i = 0; i < nNode; i++) {
-		//modules[i].numMembers = modules[i].members.size(); //a memory error is happening because of this statement, I don't know why, maybe this is the source of the error or maybe the error is being thrown from another source and this code is revealing the error of another source
 		if (modules[i].numMembers > 0) {
 			superNodes.push_back(SuperNode(modules[i], idx));
 			modToSPNode[i] = idx;
@@ -3851,6 +3960,22 @@ void Network::convertModulesToSuperNodes(int tag) {
 	 *	Calculate outLinks and inLinks between superNodes...
 	 */
 	int numSPNode = superNodes.size();
+
+	double numberOfSuperNodes = numSPNode;
+	int stripSize = (numberOfSuperNodes / size) + 1;
+
+	const unsigned int toSpNodesPackSize = nEdge + 1;
+	const unsigned int totalEdges = nEdge;
+	const unsigned int PackSize = 2 * stripSize;
+
+	double linkWeightstoSpNodesSend[totalEdges];
+	double linkWeightstoSpNodesReceive[totalEdges];
+
+	int toSpNodesSend[toSpNodesPackSize];
+	int toSpNodesReceive[toSpNodesPackSize];
+
+	int spNodeCountTrackerSend[PackSize];
+	int spNodeCountTrackerReceive[PackSize];
 
 	int start, end;
 	findAssignedPart(&start, &end, numSPNode, size, rank);
@@ -3902,7 +4027,8 @@ void Network::convertModulesToSuperNodes(int tag) {
 				}
 			}
 		}
-		spNodeCountTrackerSend[nNode + countSPNode] = currentSPNodeTotalLinks;
+		spNodeCountTrackerSend[stripSize + countSPNode] =
+				currentSPNodeTotalLinks;
 		countSPNode++;
 
 	}
@@ -3910,7 +4036,7 @@ void Network::convertModulesToSuperNodes(int tag) {
 	int totalLinks = 0;
 	for (int m = 0; m < toSpNodesSend[nEdge]; m++) {
 		int spNodeIndex = spNodeCountTrackerSend[m];
-		int numLinks = spNodeCountTrackerSend[nNode + m];
+		int numLinks = spNodeCountTrackerSend[stripSize + m];
 		superNodes[m].outLinks.reserve(numLinks);
 
 		for (int it = totalLinks; it < totalLinks + numLinks; it++) {
@@ -3932,6 +4058,7 @@ void Network::convertModulesToSuperNodes(int tag) {
 					tag, toSpNodesReceive, toSpNodesPackSize,
 					MPI_INT, processId, tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+
 			MPI_Sendrecv(linkWeightstoSpNodesSend, toSpNodesPackSize,
 			MPI_DOUBLE, processId, tag, linkWeightstoSpNodesReceive,
 					toSpNodesPackSize, MPI_DOUBLE, processId, tag,
@@ -3943,7 +4070,7 @@ void Network::convertModulesToSuperNodes(int tag) {
 
 			for (int it = 0; it < spNodeReceived; it++) {
 				int spNodeIndex = spNodeCountTrackerReceive[it];
-				int numLinks = spNodeCountTrackerReceive[nNode + it];
+				int numLinks = spNodeCountTrackerReceive[stripSize + it];
 				superNodes[spNodeIndex].outLinks.reserve(numLinks);
 
 				for (int iterator = totLinks; iterator < totLinks + numLinks;
@@ -3966,6 +4093,12 @@ void Network::convertModulesToSuperNodes(int tag) {
 						make_pair(i, superNodes[i].outLinks[j].second));
 		}
 	}
+
+	gettimeofday(&endConvertModules, NULL);
+
+	total_time_convertModules += elapsedTimeInSec(startConvertModules,
+			endConvertModules);
+	total_iterations_convertModules++;
 
 	/*	delete[] toSpNodesSend;
 	 delete[] toSpNodesReceive;
@@ -4026,7 +4159,7 @@ void Network::generateSuperNodesFromSubModules(int numTh) {
 	superNodes.reserve(nSubMods);
 
 	for (int i = 0; i < nSubMods; i++) {
-		superNodes.push_back(SuperNode(subModules[i], i, *this));
+		superNodes.push_back(SuperNode(&subModules[i], i, *this));
 	}
 
 	/*
@@ -4038,7 +4171,6 @@ void Network::generateSuperNodesFromSubModules(int numTh) {
 
 	omp_set_num_threads(numTh);
 
-#pragma omp parallel for schedule(dynamic)
 	for (int i = 0; i < numSPNode; i++) {
 		SuperNode* spNode = &(superNodes[i]);
 
@@ -4057,8 +4189,9 @@ void Network::generateSuperNodesFromSubModules(int numTh) {
 				if (toSPNode != i) {	// outLinks to another superNode...
 					pair<EdgeMap::iterator, bool> ret = newOutLinks.insert(
 							make_pair(toSPNode, nd->outLinks[k].second));
-					if (!ret.second)
+					if (!ret.second) {
 						ret.first->second += nd->outLinks[k].second;
+					}
 				}
 			}
 		}

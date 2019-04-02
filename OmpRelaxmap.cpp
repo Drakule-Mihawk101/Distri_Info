@@ -30,15 +30,27 @@ unsigned stou(char *s) {
 
 void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		double vThresh, int maxIter, bool prior, bool fineTune, bool fast,
-		bool inLoop);
+		bool inLoop, double& total_time_move, int& total_iterations_move,
+		double& total_time_updateMembers, double& total_time_convertModules,
+		double& total_time_prioritize_move,
+		double& total_time_prioritize_Spmove, int& total_iterations_priorMove,
+		int& total_iterations_priorMoveSP, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules);
 void partition_module_network(Network &network, int numTh, double threshold,
-		int maxIter, bool fast);
+		int maxIter, bool fast, double& total_time_move,
+		int& total_iterations_move, double& total_time_updateMembers,
+		double& total_time_convertModules, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules);
 void generate_sub_modules(Network &network, int numTh, double threshold,
-		int maxIter);
+		int maxIter, double& total_time_move, int& total_iterations_move,
+		double& total_time_updateMembers, double& total_time_convertModules,
+		double& total_time_calibrate, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules);
 void generate_network_from_module(Network &newNetwork, Module* mod,
-		map<int, int>& origNodeID, int numTh, int iteration);
+		map<int, int>& origNodeID, int numTh, int iteration,
+		double& total_time_calibrate);
 void generate_network_from_module(Network &newNetwork, Module* mod,
-		map<int, int> &origNodeID, int iteration);
+		map<int, int> &origNodeID, int iteration, double& total_time_calibrate);
 void print_twoLevel_Cluster(Network network, string networkName, string outDir);
 
 void findAssignedPart(int* start, int* end, int numNodes, int numTh, int myID);
@@ -152,11 +164,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (includeSelfLinks)
-		//cout << "including " <<  NselfLinks << " self link(s)." << endl;  
+	//cout << "including " <<  NselfLinks << " self link(s)." << endl;
+	{
 		cout << "current version always excludes self links.\nignoring "
 				<< NselfLinks << " self link(s)." << endl;
-	else
+	} else {
 		cout << "ignoring " << NselfLinks << " self link(s)." << endl;
+	}
 
 	//Swap vector to free memory
 	map<pair<int, int>, double>().swap(origNetwork.Edges);
@@ -169,7 +183,22 @@ int main(int argc, char *argv[]) {
 
 	gettimeofday(&start, NULL);
 	// Initialization.
-	origNetwork.initiate(numThreads);
+
+	double total_time_initiate = 0.0;
+	double total_time_calibrate = 0.0;
+	double total_time_updateMembers = 0.0;
+	double total_time_convertModules = 0.0;
+	double total_time_move = 0.0;
+	double total_time_calcCodelen = 0.0;
+	double total_time_prioritize_move = 0.0;
+	double total_time_prioritize_Spmove = 0.0;
+	int total_iterations_move = 0;
+	int total_iterations_priorMove = 0;
+	int total_iterations_priorMoveSP = 0;
+	int total_iterations_updateMembers = 0;
+	int total_iterations_convertModules = 0;
+
+	origNetwork.initiate(numThreads, total_time_initiate, total_time_calibrate);
 
 	// Now update inLinks..
 	for (int i = 0; i < nNode; i++) {
@@ -207,7 +236,13 @@ int main(int argc, char *argv[]) {
 	printf("original network for rank:%d with size:%d\n", rank,
 			origNetwork.superNodes.size());
 	stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
-			maxIter, prior, fineTune, fast, false);
+			maxIter, prior, fineTune, fast, false, total_time_move,
+			total_iterations_move, total_time_updateMembers,
+			total_time_convertModules, total_time_prioritize_move,
+			total_time_prioritize_Spmove, total_iterations_priorMove,
+			total_iterations_priorMoveSP, total_iterations_updateMembers,
+			total_iterations_convertModules);
+
 	cout << "SuperStep [" << step << "] - codeLength = "
 			<< origNetwork.CodeLength() / log(2.0) << " in "
 			<< origNetwork.NModule() << " modules." << endl;
@@ -228,7 +263,12 @@ int main(int argc, char *argv[]) {
 		printf("original network for rank:%d with size:%d, nextIter\n", rank,
 				origNetwork.superNodes.size());
 		stochastic_greedy_partition(origNetwork, numThreads, threshold, vThresh,
-				maxIter, prior, fineTune, fast, true);
+				maxIter, prior, fineTune, fast, true, total_time_move,
+				total_iterations_move, total_time_updateMembers,
+				total_time_convertModules, total_time_prioritize_move,
+				total_time_prioritize_Spmove, total_iterations_priorMove,
+				total_iterations_priorMoveSP, total_iterations_updateMembers,
+				total_iterations_convertModules);
 
 		step++;
 		cout << "SuperStep [" << step << "] - codeLength = "
@@ -244,7 +284,11 @@ int main(int argc, char *argv[]) {
 			// Next iteration will be Coarse Tune.
 			gettimeofday(&subStart, NULL);
 
-			generate_sub_modules(origNetwork, numThreads, threshold, maxIter);
+			generate_sub_modules(origNetwork, numThreads, threshold, maxIter,
+					total_time_move, total_iterations_move,
+					total_time_updateMembers, total_time_convertModules,
+					total_time_calibrate, total_iterations_updateMembers,
+					total_iterations_convertModules);
 
 			gettimeofday(&subEnd, NULL);
 			printf("Time for finding sub-modules for rank:%d is:%f sec\n", rank,
@@ -270,7 +314,35 @@ int main(int argc, char *argv[]) {
 			<< elapsedTimeInSec(allStart, allEnd) << " (sec)" << endl;
 
 	cout << "\nComputed Code Length = "
-			<< origNetwork.calculateCodeLength() / log(2.0) << endl;
+			<< origNetwork.calculateCodeLength(total_time_calcCodelen)
+					/ log(2.0) << endl;
+
+	printf("time for initiate function in rank:%d is %f\n", rank,
+			total_time_initiate);
+
+	printf("time for calibrate in rank:%d is %f\n", rank, total_time_calibrate);
+
+	printf(
+			"time for updateMembersInModule in rank:%d is %f for total:%d iterations\n",
+			rank, total_time_updateMembers, total_iterations_updateMembers);
+
+	printf(
+			"time for convertModulesToSuperNodes in rank:%d is %f for total:%d iterations\n",
+			rank, total_time_convertModules, total_iterations_convertModules);
+
+	printf("time for calculateCodeLength in rank:%d is %f\n", rank,
+			total_time_calcCodelen);
+
+	printf("time for move in rank:%d is %f for total:%d iterations\n", rank,
+			total_time_move, total_iterations_move);
+
+	printf(
+			"time for prioritize_move in rank:%d is %f for total:%d iterations\n",
+			rank, total_time_prioritize_move, total_iterations_priorMove);
+
+	printf(
+			"time for prioritize_Spmove in rank:%d is %f for total:%d iterations\n",
+			rank, total_time_prioritize_Spmove, total_iterations_priorMoveSP);
 
 //Print two-level clustering result in .tree file
 	print_twoLevel_Cluster(origNetwork, networkName, outDir);
@@ -283,12 +355,12 @@ int main(int argc, char *argv[]) {
 	oss << outDir << "/" << networkName << ".clu";
 	outFile.open(oss.str().c_str());
 	outFile << "*Vertices " << nNode << "\x0D\x0A";
-	for (int i = 0; i < nNode; i++)
+	for (int i = 0; i < nNode; i++) {
 		outFile << origNetwork.nodes[i].ModIdx() + 1 << "\x0D\x0A";
+	}
 	outFile.close();
 
 	MPI_Finalize();
-
 }
 
 /*
@@ -301,7 +373,12 @@ int main(int argc, char *argv[]) {
  */
 void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		double vThresh, int maxIter, bool prior, bool fineTune, bool fast,
-		bool inLoop) {
+		bool inLoop, double& total_time_move, int& total_iterations_move,
+		double& total_time_updateMembers, double& total_time_convertModules,
+		double& total_time_prioritize_move,
+		double& total_time_prioritize_Spmove, int& total_iterations_priorMove,
+		int& total_iterations_priorMoveSP, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules) {
 
 	double oldCodeLength = network.CodeLength();
 	int iter = 0;
@@ -318,7 +395,6 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	struct timeval inner_T1, inner_T2;
 	struct timeval seq_T1, seq_T2;
 	struct timeval convert_T1, convert_T2;
-	struct timeval priorMoveStart, priorMoveEnd;
 
 	double tSequential = 0.0;
 
@@ -345,17 +421,14 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		if (fineTune) {
 			if (numTh == 1) {
 				if (prior) {
-					gettimeofday(&priorMoveStart, NULL);
-					numMoved = network.prioritize_move(vThresh, iter, inLoop);
-					gettimeofday(&priorMoveEnd, NULL);
-					printf(
-							"time for prioritize_move for rank:%d is %f where iteration number:%d and inWhile:%d\n",
-							rank,
-							elapsedTimeInSec(priorMoveStart, priorMoveEnd),
-							iter, inLoop);
-					//network.showOutput(iter, 0, inLoop);
+
+					numMoved = network.prioritize_move(vThresh, iter, inLoop,
+							total_time_prioritize_move,
+							total_iterations_priorMove);
+
 				} else {
-					numMoved = network.move(iter);
+					numMoved = network.move(iter, total_time_move,
+							total_iterations_move);
 				}
 			} else {
 				if (prior) {
@@ -369,7 +442,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			if (numTh == 1) {
 				if (prior) {
 					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
-							iter, inLoop);
+							iter, inLoop, total_time_prioritize_Spmove,
+							total_iterations_priorMoveSP);
 				} else {
 					numMoved = network.moveSuperNodes(iter);// If at least one node is moved, return true. Otherwise, return false.
 				}
@@ -387,8 +461,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 		if (inLoop == false) {
 			printf(
-					"the old codelength for rank:%d, is:%f, the new codeLength is:%f, the iteration:%d\n",
-					rank, oldCodeLength, network.CodeLength(), iter);
+					"the old codelength for rank:%d, is:%f, the new codeLength is:%f, the iteration:%d blah blah blah\n",
+					rank, oldCodeLength, network.CodeLength() / log(2.0), iter);
 		}
 
 		if (((oldCodeLength - network.CodeLength() >= 0
@@ -398,8 +472,9 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		gettimeofday(&inner_T2, NULL);
 
 		// Print code length per iteration for DEBUG purpose.
-		cout << "Iteration " << iter << ": code length =\t"
-				<< network.CodeLength() / log(2.0) << "\t, ";
+		cout << "Phor rank:" << rank << " Iteration " << iter
+				<< ": code length =\t" << network.CodeLength() / log(2.0)
+				<< "\t, ";
 		cout << "elapsed time:\t" << elapsedTimeInSec(inner_T1, inner_T2)
 				<< "\t(sec), ";
 		cout << "accumulated time:\t" << elapsedTimeInSec(outer_T1, inner_T2)
@@ -408,16 +483,10 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		cout << "numMoved:\t" << numMoved << endl;
 	}
 
-	gettimeofday(&seq_T1, NULL);
-
 	int outerLoop = 1;
 
-	network.updateMembersInModule();
-
-	gettimeofday(&seq_T2, NULL);
-
-	printf("updating number of modules for rank:%d took %f seconds\n", rank,
-			elapsedTimeInSec(seq_T1, seq_T2));
+	network.updateMembersInModule(total_time_updateMembers,
+			total_iterations_updateMembers);
 
 	tSequential += elapsedTimeInSec(seq_T1, seq_T2);
 
@@ -431,14 +500,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		oldCodeLength = network.CodeLength();
 		stop = false;
 
-		gettimeofday(&convert_T1, NULL);
-
-		network.convertModulesToSuperNodes(tag);
-
-		gettimeofday(&convert_T2, NULL);
-
-		printf("converting modules to supernodes for rank:%d took %f seconds\n", rank,
-				elapsedTimeInSec(convert_T1, convert_T2));
+		network.convertModulesToSuperNodes(tag, total_time_convertModules,
+				total_iterations_convertModules);
 
 		tConvert += elapsedTimeInSec(convert_T1, convert_T2);
 
@@ -462,7 +525,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			if (numTh == 1) {
 				if (prior) {
 					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
-							spIter, inLoop);
+							spIter, inLoop, total_time_prioritize_Spmove,
+							total_iterations_priorMoveSP);
 				} else
 					numMoved = network.moveSuperNodes(spIter);
 			} else {
@@ -489,9 +553,9 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			gettimeofday(&inner_T2, NULL);
 
 			// Print code length per spIter for DEBUG purpose.
-			cout << "SuperIteration " << outerLoop << "-" << spIter
-					<< ": code length =\t" << network.CodeLength() / log(2.0)
-					<< "\t, ";
+			cout << "Phor rank:" << rank << " SuperIteration " << outerLoop
+					<< "-" << spIter << ": code length =\t"
+					<< network.CodeLength() / log(2.0) << "\t, ";
 			cout << "elapsed time:\t" << elapsedTimeInSec(inner_T1, inner_T2)
 					<< "\t(sec), ";
 			cout << "accumulated time:\t"
@@ -502,7 +566,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 		gettimeofday(&seq_T1, NULL);
 
-		network.updateMembersInModule();
+		network.updateMembersInModule(total_time_updateMembers,
+				total_iterations_updateMembers);
 
 		outerLoop++;
 
@@ -528,9 +593,16 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
  *	Thus, we would like to reduce printing from this function for providing high-level log.
  */
 void partition_module_network(Network &network, int numTh, double threshold,
-		int maxIter, bool fast) {
+		int maxIter, bool fast, double& total_time_move,
+		int& total_iterations_move, double& total_time_updateMembers,
+		double& total_time_convertModules, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules) {
 
 	int rank, size;
+
+	struct timeval startPartition, endPartition;
+
+	gettimeofday(&startPartition, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -547,7 +619,8 @@ void partition_module_network(Network &network, int numTh, double threshold,
 		oldCodeLength = network.CodeLength();
 
 		if (numTh == 1) {
-			numMoved = network.move(iter);
+			numMoved = network.move(iter, total_time_move,
+					total_iterations_move);
 		} else {
 			numMoved = network.parallelMove(numTh, tSequential);
 		}
@@ -560,7 +633,8 @@ void partition_module_network(Network &network, int numTh, double threshold,
 
 	int outerLoop = 1;
 
-	network.updateMembersInModule();
+	network.updateMembersInModule(total_time_updateMembers,
+			total_iterations_updateMembers);
 
 	if (fast)
 		return;
@@ -569,7 +643,8 @@ void partition_module_network(Network &network, int numTh, double threshold,
 		oldCodeLength = network.CodeLength();
 
 		stop = false;
-		network.convertModulesToSuperNodes(numTh);
+		network.convertModulesToSuperNodes(numTh, total_time_convertModules,
+				total_iterations_convertModules);
 
 		int spIter = 0;
 		while (!stop && spIter < maxIter) {
@@ -588,18 +663,31 @@ void partition_module_network(Network &network, int numTh, double threshold,
 				stop = true;
 		}
 
-		network.updateMembersInModule();
+		network.updateMembersInModule(total_time_updateMembers,
+				total_iterations_updateMembers);
 
 		outerLoop++;
 
 	} while ((oldCodeLength - network.CodeLength()) / log(2.0) > threshold);
 
+	gettimeofday(&endPartition, NULL);
+
+	printf("time for partition_module_network in rank:%d is %f\n", rank,
+			elapsedTimeInSec(startPartition, endPartition));
+
 }
 
 void generate_sub_modules(Network &network, int numTh, double threshold,
-		int maxIter) {
+		int maxIter, double& total_time_move, int& total_iterations_move,
+		double& total_time_updateMembers, double& total_time_convertModules,
+		double& total_time_calibrate, int& total_iterations_updateMembers,
+		int& total_iterations_convertModules) {
 
 	int rank, size;
+
+	struct timeval startGenModules, endGenModules;
+
+	gettimeofday(&startGenModules, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -610,17 +698,10 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 
 	gettimeofday(&t1, NULL);
 
-	vector<SubModule*>().swap(network.subModules);// swap network.subModules vector with the empty vector.
+	vector<SubModule>().swap(network.subModules);// swap network.subModules vector with the empty vector.
 	network.subModules.reserve(numNodes);
 
 	vector<int>(numNodes).swap(network.ndToSubMod);
-
-	omp_set_num_threads(numTh);
-
-	vector<vector<SubModule> > tmpSubModList(numTh);// generate 'numTh' of vector<SubModule>.
-	for (int i = 0; i < numTh; i++) {
-		tmpSubModList[i].reserve(numNodes);
-	}
 
 	gettimeofday(&t2, NULL);
 	cout << "initialization time for generate_sub_modules(): "
@@ -635,9 +716,7 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 	int numSmallMods = network.smActiveMods.size();
 	cout << "number of small modules: " << numSmallMods << endl;
 
-//#pragma omp parallel for schedule(dynamic, 100)
 	for (int i = 0; i < numSmallMods; i++) {
-		int myID = omp_get_thread_num();	// get my thread ID.
 
 		int iteration = 0;
 
@@ -650,29 +729,33 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 
 			Network newNetwork;
 
-			generate_network_from_module(newNetwork, mod, origNodeID,
-					iteration);
+			generate_network_from_module(newNetwork, mod, origNodeID, iteration,
+					total_time_calibrate);
 			newNetwork.R = Rand;
 
-			partition_module_network(newNetwork, 1, threshold, maxIter, true);// fast = true..
+			partition_module_network(newNetwork, 1, threshold, maxIter, true,
+					total_time_move, total_iterations_move,
+					total_time_updateMembers, total_time_convertModules,
+					total_iterations_updateMembers,
+					total_iterations_convertModules);	// fast = true..
 
 			int nActiveMods = newNetwork.smActiveMods.size();
 			// Adding sub-modules from a new network of the corresponding module to the list of subModules...
 			for (int j = 0; j < nActiveMods; j++) {
 				SubModule subMod(newNetwork.modules[newNetwork.smActiveMods[j]],
 						origNodeID, modIdx);
-				tmpSubModList[myID].push_back(subMod);
+				network.subModules.push_back(subMod);
 			}
 		} else {
 			// This is the special case that the module has ONLY ONE member.
 			SubModule subMod(*mod);
-			tmpSubModList[myID].push_back(subMod);
+			network.subModules.push_back(subMod);
 		}
 
 		iteration++;
 
-	} // End of for
-//}	// End of parallel.
+	}
+
 	gettimeofday(&tPar2, NULL);
 
 	cout << "Time for parallel for loop for SMALL-MODULES:\t"
@@ -698,30 +781,34 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 
 		Network newNetwork;
 		generate_network_from_module(newNetwork, mod, origNodeID, numTh,
-				iteration);
+				iteration, total_time_calibrate);
 		newNetwork.R = Rand;
 
-		partition_module_network(newNetwork, numTh, threshold, maxIter, true); // fast = true..
+		partition_module_network(newNetwork, numTh, threshold, maxIter, true,
+				total_time_move, total_iterations_move,
+				total_time_updateMembers, total_time_convertModules,
+				total_iterations_updateMembers,
+				total_iterations_convertModules); // fast = true..
 
 		// Adding sub-modules from a new network of the corresponding module to the list of subModules...
 		int nActiveMods = newNetwork.smActiveMods.size();
-//#pragma omp parallel for //schedule(dynamic)
+
 		for (int j = 0; j < nActiveMods; j++) {
 			SubModule subMod(newNetwork.modules[newNetwork.smActiveMods[j]],
 					origNodeID, modIdx);
-			tmpSubModList[omp_get_thread_num()].push_back(subMod);
+			network.subModules.push_back(subMod);
 		}
 
 		nActiveMods = newNetwork.lgActiveMods.size();
-//#pragma omp parallel for schedule(dynamic)
+
 		for (int j = 0; j < nActiveMods; j++) {
 			SubModule subMod(newNetwork.modules[newNetwork.lgActiveMods[j]],
 					origNodeID, modIdx);
-			tmpSubModList[omp_get_thread_num()].push_back(subMod);
+			network.subModules.push_back(subMod);
 		}
 
 		iteration++;
-	}	// End of parallel for.
+	}
 
 	gettimeofday(&tPar2, NULL);
 
@@ -731,16 +818,14 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 	gettimeofday(&t1, NULL);
 
 	int numSubMods = 0;
-	for (int i = 0; i < numTh; i++) {
-		for (vector<SubModule>::iterator it = tmpSubModList[i].begin();
-				it != tmpSubModList[i].end(); it++) {
-			network.subModules.push_back(&(*it));
-			for (vector<int>::iterator ndIt = it->members.begin();
-					ndIt != it->members.end(); ndIt++) {
-				network.ndToSubMod[*ndIt] = numSubMods;
-			}
-			numSubMods++;
+
+	for (vector<SubModule>::iterator it = network.subModules.begin();
+			it != network.subModules.end(); it++) {
+		for (vector<int>::iterator ndIt = it->members.begin();
+				ndIt != it->members.end(); ndIt++) {
+			network.ndToSubMod[*ndIt] = numSubMods;
 		}
+		numSubMods++;
 	}
 
 	gettimeofday(&t2, NULL);
@@ -751,15 +836,24 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 	network.generateSuperNodesFromSubModules(numTh);
 	gettimeofday(&t2, NULL);
 
+	gettimeofday(&endGenModules, NULL);
+
+	printf("time for generate_sub_modules in rank:%d is %f\n", rank,
+			elapsedTimeInSec(startGenModules, endGenModules));
+
 	cout << "generateSuperNodesFromSubModules() time:\t"
 			<< elapsedTimeInSec(t1, t2) << " (sec)" << endl;
-
 }
 
 void generate_network_from_module(Network &newNetwork, Module* mod,
-		map<int, int> &origNodeID, int iteration) {
+		map<int, int> &origNodeID, int iteration,
+		double& total_time_calibrate) {
 
 	int rank, size;
+
+	struct timeval startGenNetworkmodule, endGenNetworkmodule;
+
+	gettimeofday(&startGenNetworkmodule, NULL);
 
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -813,9 +907,9 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 	double sum_size_log_size = 0.0;
 
 	for (vector<Node>::iterator it = newNetwork.nodes.begin();
-			it != newNetwork.nodes.end(); it++)
+			it != newNetwork.nodes.end(); it++) {
 		sum_size_log_size += pLogP(it->Size());
-
+	}
 	newNetwork.setAllLogAll(sum_size_log_size);
 
 	for (int i = 0; i < newIdx; i++) {
@@ -826,12 +920,15 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 	newNetwork.setNModule(newIdx);
 	newNetwork.setNNode(newIdx);
 
-	newNetwork.calibrate(1, 1);	// This function is run in sequential. also setting tag = 1 for MPISendRecv
+	newNetwork.calibrate(1, 1, total_time_calibrate);// This function is run in sequential. also setting tag = 1 for MPISendRecv
+
+	gettimeofday(&endGenNetworkmodule, NULL);
 
 }
 
 void generate_network_from_module(Network &newNetwork, Module* mod,
-		map<int, int> &origNodeID, int numTh, int iteration) {
+		map<int, int> &origNodeID, int numTh, int iteration,
+		double& total_time_calibrate) {
 	int numMembers = mod->numMembers;
 	newNetwork.modules = vector<Module>(numMembers);
 
@@ -853,60 +950,53 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 		newIdx++;// newIdx is equal to the number of nodes in this module (or network.)
 	}
 
-	omp_set_num_threads(numTh);
+	omp_set_num_threads(numTh);	//this statement has nothing to do with my current distributed implementation
 
 	double sum_size_log_size = 0.0;
 
-#pragma omp parallel
-	{
-		// add outLinks within the newNetwork.
-#pragma omp for //nowait
-		for (int i = 0; i < numMembers; i++) {
-			Node* it = mod->members[i];
-			int nid = newNodeID[it->ID()];
-			Node* nd_ptr = &(newNetwork.nodes[nid]);
+	// add outLinks within the newNetwork.
 
-			for (link_iterator link_it = it->outLinks.begin();
-					link_it != it->outLinks.end(); link_it++) {
-				// check whether the edge within the module or not.
-				map<int, int>::iterator m_it = newNodeID.find(link_it->first);
-				if (m_it != newNodeID.end()) {
-					nd_ptr->outLinks.push_back(
-							make_pair(m_it->second, link_it->second));
-				}
+	for (int i = 0; i < numMembers; i++) {
+		Node* it = mod->members[i];
+		int nid = newNodeID[it->ID()];
+		Node* nd_ptr = &(newNetwork.nodes[nid]);
+
+		for (link_iterator link_it = it->outLinks.begin();
+				link_it != it->outLinks.end(); link_it++) {
+			// check whether the edge within the module or not.
+			map<int, int>::iterator m_it = newNodeID.find(link_it->first);
+			if (m_it != newNodeID.end()) {
+				nd_ptr->outLinks.push_back(
+						make_pair(m_it->second, link_it->second));
 			}
 		}
+	}
 
-#pragma omp master
-		// add inLinks within the newNetwork based on the generated outLinks above.
-		for (vector<Node>::iterator it = newNetwork.nodes.begin();
-				it != newNetwork.nodes.end(); it++) {
-			for (link_iterator l_it = it->outLinks.begin();
-					l_it != it->outLinks.end(); l_it++) {
-				newNetwork.nodes[l_it->first].inLinks.push_back(
-						make_pair(it->ID(), l_it->second));
-			}
+	// add inLinks within the newNetwork based on the generated outLinks above.
+	for (vector<Node>::iterator it = newNetwork.nodes.begin();
+			it != newNetwork.nodes.end(); it++) {
+		for (link_iterator l_it = it->outLinks.begin();
+				l_it != it->outLinks.end(); l_it++) {
+			newNetwork.nodes[l_it->first].inLinks.push_back(
+					make_pair(it->ID(), l_it->second));
 		}
+	}
 
-#pragma omp for reduction(+:sum_size_log_size)
-		for (int i = 0; i < numMembers; i++) {
-			sum_size_log_size += pLogP(newNetwork.nodes[i].Size());
-		}
+	for (int i = 0; i < numMembers; i++) {
+		sum_size_log_size += pLogP(newNetwork.nodes[i].Size());
+	}
 
-#pragma omp master
-		newNetwork.setAllLogAll(sum_size_log_size);
+	newNetwork.setAllLogAll(sum_size_log_size);
 
-#pragma omp for
-		for (int i = 0; i < newIdx; i++) {
-			newNetwork.modules[i] = Module(i, &newNetwork.nodes[i]);
-			newNetwork.nodes[i].setModIdx(i);
-		}
+	for (int i = 0; i < newIdx; i++) {
+		newNetwork.modules[i] = Module(i, &newNetwork.nodes[i]);
+		newNetwork.nodes[i].setModIdx(i);
 	}
 
 	newNetwork.setNModule(newIdx);
 	newNetwork.setNNode(newIdx);
 
-	newNetwork.calibrate(numTh, 2);  //also setting tag = 2 for MPISendRecv
+	newNetwork.calibrate(numTh, 2, total_time_calibrate); //also setting tag = 2 for MPISendRecv
 }
 
 void print_twoLevel_Cluster(Network network, string networkName,

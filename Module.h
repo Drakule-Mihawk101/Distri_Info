@@ -126,10 +126,10 @@ public:
 	vector<int> danglings;	// node index of dangling nodes in nodes vector.
 
 	vector<int> ndToSubMod;		// This will store subModule ID for each node.
-	vector<SubModule*> subModules;// This will store SubModules of this network
-								  // for coarse-tune optimization..
+	vector<SubModule> subModules;// This will store SubModules of this network
+								 // for coarse-tune optimization..
 
-								  // two-vectors for maintaining activeNodes for prioritizing.
+								 // two-vectors for maintaining activeNodes for prioritizing.
 	vector<char> isActives;	// 0 - inactive, 1 - active nodes. Working as a boolean array.
 	vector<int> activeNodes;	// Actual node IDs for active nodes.
 
@@ -223,26 +223,34 @@ public:
 	// find the value of the modularity for the discovered communities
 	double calculateModularityScore();
 	//void initiate();
-	void initiate(int numTh);
+	void initiate(int numTh, double& total_time_initiate,
+			double& total_time_calibrate);
 	//void calculateSteadyState();	// eigenvector();
-	void calculateSteadyState(int numTh);	// eigenvector();
-	void calibrate(int numTh, int tag);
-	int move(int iteration);
-	int prioritize_move(double vThresh, int iteration, bool inWhile);
+	void calculateSteadyState(int numTh, double& total_time_calcSteady); // eigenvector();
+	void calibrate(int numTh, int tag, double& total_time_calibrate);
+	int move(int iteration, double& total_time_move,
+			int& total_iterations_move);
+	int prioritize_move(double vThresh, int iteration, bool inWhile,
+			double& total_time_prioritize_move,
+			int& total_iterations_priorMove);
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
 	int moveSuperNodes(int iteration);
 	int prioritize_moveSPnodes(double vThresh, int tag, int iteration,
-			bool inWhile);
+			bool inWhile, double& total_time_prioritize_Spmove,
+			int& total_iterations_priorSPNodes);
 	int parallelMoveSuperNodes(int numTh, double & tUpdate);
 	int prioritize_parallelMoveSPnodes(int numTh, double & tUpdate,
 			double vThresh);
-	void convertModulesToSuperNodes(int numTh);
+	void convertModulesToSuperNodes(int numTh,
+			double& total_time_convertModules,
+			int& total_iterations_convertModules);
 	//void generateSuperNodesFromSubModules();	// generate SuperNodes from SubModule..
-	void generateSuperNodesFromSubModules(int numTh);// parallel version of the above function.
+	void generateSuperNodesFromSubModules(int numTh); // parallel version of the above function.
 
-	double calculateCodeLength();
-	void updateMembersInModule();
+	double calculateCodeLength(double& total_time_calcCodelen);
+	void updateMembersInModule(double& total_time_updateMembers,
+			int& total_iterations_updateMembers);
 	void updateSPMembersInModule();
 	void updateCodeLength(int numTh, bool isSPNode);
 	void copyModule(Module * newM, Module * oldM);	// copy from oldM to newM.
