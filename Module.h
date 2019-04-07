@@ -231,14 +231,15 @@ public:
 	int move(int iteration, double& total_time_move,
 			int& total_iterations_move);
 	int prioritize_move(double vThresh, int iteration, bool inWhile,
-			double& total_time_prioritize_move,
-			int& total_iterations_priorMove);
+			double& total_time_prioritize_move, int& total_iterations_priorMove,
+			double& total_time_MPISendRecv);
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
 	int moveSuperNodes(int iteration);
 	int prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			bool inWhile, double& total_time_prioritize_Spmove,
-			int& total_iterations_priorSPNodes);
+			int& total_iterations_priorSPNodes,
+			double& total_time_MPISendRecvSP);
 	int parallelMoveSuperNodes(int numTh, double & tUpdate);
 	int prioritize_parallelMoveSPnodes(int numTh, double & tUpdate,
 			double vThresh);

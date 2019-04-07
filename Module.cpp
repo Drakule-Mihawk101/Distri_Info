@@ -222,8 +222,10 @@ void Network::initiate(int numTh, double& total_time_initiate,
 
 	calculateSteadyState(numTh, total_time_calcSteady);
 
-	printf("time for calculateSteadyState in rank:%d is %f\n", rank,
-			total_time_calcSteady);
+	/*
+	 printf("time for calculateSteadyState in rank:%d is %f\n", rank,
+	 total_time_calcSteady);
+	 */
 
 	gettimeofday(&endT, NULL);
 	cout << "Time for calculating steady state of nodes (eigenvector): "
@@ -249,7 +251,7 @@ void Network::initiate(int numTh, double& total_time_initiate,
 			<< elapsedTimeInSec(startT, endT) << " (sec)" << endl;
 
 	// Calculate SUM of p_log_p over all nodes.
-	int tag = 99999977;
+	int tag = 888888;
 	double allNds_log_allNds_send = 0.0;
 	double allNds_log_allNds_recv = 0.0;
 
@@ -299,7 +301,7 @@ void Network::calculateSteadyState(int numTh, double& total_time_calcSteady) {
 
 	int size;
 	int rank;
-	int tag = 99999999;
+	int tag = 999999;
 
 	vector<double> size_tmp = vector<double>(nNode, 1.0 / nNode);
 
@@ -695,55 +697,57 @@ int Network::move(int iteration, double& total_time_move,
 			// update related to newMod...
 			int newMod = bestResult.newModule;
 
-			if (modules[newMod].numMembers == 0) {
-				nEmptyMod--;
-				nModule++;
+			if (oldMod < newMod) {
+
+				if (modules[newMod].numMembers == 0) {
+					nEmptyMod--;
+					nModule++;
+				}
+
+				nd.setModIdx(newMod);
+
+				modules[newMod].numMembers++;
+				modules[newMod].exitPr = bestResult.exitPr2;
+				modules[newMod].sumPr = bestResult.sumPr2;
+				modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+				modules[newMod].sumTPWeight += ndTPWeight;
+
+				if (nd.IsDangling()) {
+					modules[newMod].sumDangling += ndSize;
+					modules[oldMod].sumDangling -= ndSize;
+				}
+
+				// update related to the oldMod...
+				modules[oldMod].numMembers--;
+				modules[oldMod].exitPr = bestResult.exitPr1;
+				modules[oldMod].sumPr = bestResult.sumPr1;
+				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+				modules[oldMod].sumTPWeight -= ndTPWeight;
+
+				if (modules[oldMod].numMembers == 0) {
+					nEmptyMod++;
+					nModule--;
+				}
+
+				// the following code block is for sending information of updated vertex across the other processes
+
+				intSendPack[numMoved] = vertexIndex;
+				intSendPack[1 * stripSize + numMoved] = oldMod;
+				intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
+
+				doubleSendPack[numMoved] = bestResult.diffCodeLen;
+				doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
+				doubleSendPack[2 * stripSize + numMoved] = bestResult.sumPr2;
+				doubleSendPack[3 * stripSize + numMoved] = bestResult.exitPr1;
+				doubleSendPack[4 * stripSize + numMoved] = bestResult.exitPr2;
+
+				sumAllExitPr = bestResult.newSumExitPr;
+
+				codeLengthReduction += bestResult.diffCodeLen;
+
+				numMoved++;
 			}
-
-			nd.setModIdx(newMod);
-
-			modules[newMod].numMembers++;
-			modules[newMod].exitPr = bestResult.exitPr2;
-			modules[newMod].sumPr = bestResult.sumPr2;
-			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
-			modules[newMod].sumTPWeight += ndTPWeight;
-
-			if (nd.IsDangling()) {
-				modules[newMod].sumDangling += ndSize;
-				modules[oldMod].sumDangling -= ndSize;
-			}
-
-			// update related to the oldMod...
-			modules[oldMod].numMembers--;
-			modules[oldMod].exitPr = bestResult.exitPr1;
-			modules[oldMod].sumPr = bestResult.sumPr1;
-			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-			modules[oldMod].sumTPWeight -= ndTPWeight;
-
-			if (modules[oldMod].numMembers == 0) {
-				nEmptyMod++;
-				nModule--;
-			}
-
-			// the following code block is for sending information of updated vertex across the other processes
-
-			intSendPack[numMoved] = vertexIndex;
-			intSendPack[1 * stripSize + numMoved] = oldMod;
-			intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
-
-			doubleSendPack[numMoved] = bestResult.diffCodeLen;
-			doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
-			doubleSendPack[2 * stripSize + numMoved] = bestResult.sumPr2;
-			doubleSendPack[3 * stripSize + numMoved] = bestResult.exitPr1;
-			doubleSendPack[4 * stripSize + numMoved] = bestResult.exitPr2;
-
-			sumAllExitPr = bestResult.newSumExitPr;
-
-			codeLengthReduction += bestResult.diffCodeLen;
-
-			numMoved++;
 		}
-
 		elementCount++;
 	}
 
@@ -847,7 +851,8 @@ int Network::move(int iteration, double& total_time_move,
  *	return: the number of movements.
  */
 int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
-		double& total_time_prioritize_move, int& total_iterations_priorMove) {
+		double& total_time_prioritize_move, int& total_iterations_priorMove,
+		double& total_time_MPISendRecv) {
 
 	int size;
 	int rank;
@@ -860,6 +865,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 	set<int> emptyModuleSet;
 
 	struct timeval startPrioMove, endPrioMove;
+	struct timeval startMPISendRecv, endMPISendRecv;
 
 	gettimeofday(&startPrioMove, NULL);
 
@@ -896,12 +902,12 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 		randomGlobalArray[target] = tmp;
 	}
 
-	if (iteration == 0) {
-		for (int i = start; i < end; i++) {
-			printf("Checking olala rank:%d, randomGlobalArray[%d]:%d\n", rank,
-					i, randomGlobalArray[i]);
-		}
-	}
+	/*	if (iteration == 0) {
+	 for (int i = start; i < end; i++) {
+	 printf("Checking olala rank:%d, randomGlobalArray[%d]:%d\n", rank,
+	 i, randomGlobalArray[i]);
+	 }
+	 }*/
 // Generate random sequential order of active nodes.
 	int* intSendPack = new (nothrow) int[intPackSize]();// multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
 	int* intReceivePack = new (nothrow) int[intPackSize]();
@@ -1087,74 +1093,77 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 			// update related to newMod...
 			int newMod = bestResult.newModule;
 
-			if (modules[newMod].numMembers == 0) {
-				nEmptyMod--;
-				nModule++;
-			}
+			if (oldMod < newMod) {
 
-			nd.setModIdx(newMod);
+				if (modules[newMod].numMembers == 0) {
+					nEmptyMod--;
+					nModule++;
+				}
 
-			modules[newMod].numMembers++;
-			modules[newMod].exitPr = bestResult.exitPr2;
-			modules[newMod].sumPr = bestResult.sumPr2;
-			modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+				nd.setModIdx(newMod);
 
-			modules[newMod].sumTPWeight += ndTPWeight;
-			//doubleSendPack[5 * nNode + newMod] += ndTPWeight;
+				modules[newMod].numMembers++;
+				modules[newMod].exitPr = bestResult.exitPr2;
+				modules[newMod].sumPr = bestResult.sumPr2;
+				modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
 
-			if (nd.IsDangling()) {
-				modules[newMod].sumDangling += ndSize;
-				modules[oldMod].sumDangling -= ndSize;
-			}
+				modules[newMod].sumTPWeight += ndTPWeight;
+				//doubleSendPack[5 * nNode + newMod] += ndTPWeight;
 
-			modules[oldMod].numMembers--;
-			modules[oldMod].exitPr = bestResult.exitPr1;
-			modules[oldMod].sumPr = bestResult.sumPr1;
-			modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-			modules[oldMod].sumTPWeight -= ndTPWeight;
+				if (nd.IsDangling()) {
+					modules[newMod].sumDangling += ndSize;
+					modules[oldMod].sumDangling -= ndSize;
+				}
 
-			if (modules[oldMod].numMembers == 0) {
-				nEmptyMod++;
-				nModule--;
-			}
+				modules[oldMod].numMembers--;
+				modules[oldMod].exitPr = bestResult.exitPr1;
+				modules[oldMod].sumPr = bestResult.sumPr1;
+				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+				modules[oldMod].sumTPWeight -= ndTPWeight;
 
-			// the following code block is for sending information of updated vertex across the other processes
+				if (modules[oldMod].numMembers == 0) {
+					nEmptyMod++;
+					nModule--;
+				}
 
-			intSendPack[numMoved] = vertexIndex;
+				// the following code block is for sending information of updated vertex across the other processes
 
-			if (iteration == 0) {
-				printf(
-						"Tracking move for rank:%d, the vertex Id is:%d,the new module is:%d, the old module is:%d\n",
-						rank, vertexIndex, bestResult.newModule, oldMod);
-			}
+				intSendPack[numMoved] = vertexIndex;
 
-			intSendPack[1 * stripSize + numMoved] = oldMod;
-			intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
+				/*				if (iteration == 0) {
+				 printf(
+				 "Tracking move for rank:%d, the vertex Id is:%d,the new module is:%d, the old module is:%d\n",
+				 rank, vertexIndex, bestResult.newModule, oldMod);
+				 }*/
 
-			doubleSendPack[numMoved] = bestResult.diffCodeLen;
-			doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
-			doubleSendPack[2 * stripSize + numMoved] = bestResult.sumPr2;
-			doubleSendPack[3 * stripSize + numMoved] = bestResult.exitPr1;
-			doubleSendPack[4 * stripSize + numMoved] = bestResult.exitPr2;
+				intSendPack[1 * stripSize + numMoved] = oldMod;
+				intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
 
-			sumAllExitPr = bestResult.newSumExitPr;
+				doubleSendPack[numMoved] = bestResult.diffCodeLen;
+				doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
+				doubleSendPack[2 * stripSize + numMoved] = bestResult.sumPr2;
+				doubleSendPack[3 * stripSize + numMoved] = bestResult.exitPr1;
+				doubleSendPack[4 * stripSize + numMoved] = bestResult.exitPr2;
 
-			codeLengthReduction += bestResult.diffCodeLen;
-			//codeLength += bestResult.diffCodeLen;
+				sumAllExitPr = bestResult.newSumExitPr;
 
-			numMoved++;
+				codeLengthReduction += bestResult.diffCodeLen;
+				//codeLength += bestResult.diffCodeLen;
 
-			// update activeNodes and isActives vectors.
-			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
-			for (link_iterator linkIt = nd.outLinks.begin();
-					linkIt != nd.outLinks.end(); linkIt++) {
+				numMoved++;
 
-				isActives[linkIt->first] = 1;	// set as an active nodes.
-			}
-			for (link_iterator linkIt = nd.inLinks.begin();
-					linkIt != nd.inLinks.end(); linkIt++) {
+				// update activeNodes and isActives vectors.
+				// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
+				for (link_iterator linkIt = nd.outLinks.begin();
+						linkIt != nd.outLinks.end(); linkIt++) {
 
-				isActives[linkIt->first] = 1;	// set as an active nodes.
+					isActives[linkIt->first] = 1;	// set as an active nodes.
+				}
+				for (link_iterator linkIt = nd.inLinks.begin();
+						linkIt != nd.inLinks.end(); linkIt++) {
+
+					isActives[linkIt->first] = 1;	// set as an active nodes.
+				}
 			}
 		}
 
@@ -1175,6 +1184,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
 
+			gettimeofday(&startMPISendRecv, NULL);
+
 			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
 					intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
@@ -1182,6 +1193,11 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
 					mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
 					processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+
+			gettimeofday(&endMPISendRecv, NULL);
+
+			total_time_MPISendRecv += elapsedTimeInSec(startMPISendRecv,
+					endMPISendRecv);
 
 			int totalElementSentFromSender = intReceivePack[intPackSize - 1];
 
@@ -1257,12 +1273,12 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 
 	}
 
-	if (iteration == 0) {
-		for (int i = 0; i < nNode; i++) {
-			printf("distributed output in rank:%d, where i:%d, module:%d\n",
-					rank, i, nodes[i].modIdx);
-		}
-	}
+	/*	if (iteration == 0) {
+	 for (int i = 0; i < nNode; i++) {
+	 printf("distributed output in rank:%d, where i:%d, module:%d\n",
+	 rank, i, nodes[i].modIdx);
+	 }
+	 }*/
 
 	vector<int>().swap(activeNodes);
 	for (int i = 0; i < isActives.size(); i++) {
@@ -2296,7 +2312,7 @@ int Network::moveSuperNodes(int iteration) {
 			int newMod = bestResult.newModule;
 			int spMembers = nd.members.size();
 
-			if (oldMod != newMod) {
+			if (oldMod < newMod) {
 
 				if (modules[newMod].numMembers == 0) {
 					nEmptyMod--;
@@ -2476,7 +2492,7 @@ void Network::showOutput(int iteration, int prioritizeSPMove, bool inWhile) {
 
 int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 		bool inWhile, double& total_time_prioritize_Spmove,
-		int& total_iterations_priorSPNodes) {
+		int& total_iterations_priorSPNodes, double& total_time_MPISendRecvSP) {
 
 	int SPNodeCountforSending = 0;
 	int elementCount = 0;
@@ -2490,6 +2506,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	int rank;
 
 	struct timeval startPrio_moveSPnodes, endPrio_moveSPnodes;
+	struct timeval startPrio_moveSPnodes_MPISendRecv,
+			endPrio_moveSPnodes_MPISendRecv;
 
 	gettimeofday(&startPrio_moveSPnodes, NULL);
 
@@ -2708,7 +2726,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			int newMod = bestResult.newModule;
 			int spMembers = nd.members.size();
 
-			if (oldMod != newMod) {
+			if (oldMod < newMod) {
 
 				if (modules[newMod].numMembers == 0) {
 					nEmptyMod--;
@@ -2799,6 +2817,9 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 	for (int processId = 0; processId < size; processId++) {
 		if (processId != rank) {
+
+			gettimeofday(&startPrio_moveSPnodes_MPISendRecv, NULL);
+
 			MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
 					intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
 					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
@@ -2806,6 +2827,12 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
 					mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
 					processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+
+			gettimeofday(&endPrio_moveSPnodes_MPISendRecv, NULL);
+
+			total_time_MPISendRecvSP += elapsedTimeInSec(
+					startPrio_moveSPnodes_MPISendRecv,
+					endPrio_moveSPnodes_MPISendRecv);
 
 			int totalSPNodefromSender = intReceivePack[intPackSize - 1];
 
