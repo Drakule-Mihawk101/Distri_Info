@@ -57,7 +57,6 @@ void load_pajek_format_network(string fName, Network &network) {
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	cout << "tera:" << rank << endl;
 	cout << "Reading network " << fName << " file\n" << flush;
 	ifstream net(fName.c_str());
 	network.setNNode(0);

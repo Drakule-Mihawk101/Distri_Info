@@ -421,7 +421,6 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	gettimeofday(&outer_T1, NULL);
 
 	int nActiveUnits = (fineTune) ? network.NNode() : network.superNodes.size();
-	cout << nActiveUnits << ", ";
 
 // set initial active nodes list ...
 	vector<char>(nActiveUnits).swap(network.isActives);

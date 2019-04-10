@@ -878,8 +878,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 
 	int stripSize = ceil(totalElemenets / size) + 1;
 
-	const int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const int doublePackSize = 5 * stripSize + 3;
+	const int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const int doublePackSize = 2 * stripSize + 3;
 
 	int* randomGlobalArray = new int[nActive]();
 
@@ -911,11 +911,15 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 // Generate random sequential order of active nodes.
 	int* intSendPack = new (nothrow) int[intPackSize]();// multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
 	int* intReceivePack = new (nothrow) int[intPackSize]();
+	int* intRecvAll = new (nothrow) int[intPackSize * size]();
 	double* doubleSendPack = new (nothrow) double[doublePackSize]();// multiplier 6 for 6 different elements of diffCodeLen, sumPr1, sumPr2, exitPr1, exitPr2, newSumExitPr
 	double* doubleReceivePack = new (nothrow) double[doublePackSize]();
+	double* doubleRecvAll = new (nothrow) double[doublePackSize * size]();
+	float* floatSendPack = new (nothrow) float[doublePackSize]();
+	float* floatRecvAll = new (nothrow) float[doublePackSize * size]();
 
-	if (!intSendPack || !intReceivePack || !doubleSendPack
-			|| !doubleReceivePack) {
+	if (!intSendPack || !intReceivePack || !doubleSendPack || !doubleReceivePack
+			|| !intRecvAll || !doubleRecvAll) {
 		printf(
 				"ERROR in prioritize_move: process:%d does not have sufficient memory, process exiting...\n",
 				rank);
@@ -926,6 +930,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 	double currentSumAllExitPr = sumAllExitPr;
 
 	int numMoved = 0;
+	int elementMoved = 0;
+	int indexer = 1 * stripSize;
 
 	elementCount = 0;
 
@@ -1008,6 +1014,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 		// Calculate flow to/from own module (default value if no links to own module).
 		double outFlowToOldMod = additionalTeleportOutFlow;
 		double inFlowFromOldMod = additionalTeleportInFlow;
+
 		if (outFlowToMod.count(oldMod) > 0) {
 			outFlowToOldMod = outFlowToMod[oldMod];
 			inFlowFromOldMod = inFlowFromMod[oldMod];
@@ -1095,62 +1102,59 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 
 			if (oldMod < newMod) {
 
-				if (modules[newMod].numMembers == 0) {
-					nEmptyMod--;
-					nModule++;
-				}
+				/*
+				 if (modules[newMod].numMembers == 0) {
+				 nEmptyMod--;
+				 nModule++;
+				 }
 
-				nd.setModIdx(newMod);
 
-				modules[newMod].numMembers++;
-				modules[newMod].exitPr = bestResult.exitPr2;
-				modules[newMod].sumPr = bestResult.sumPr2;
-				modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+				 nd.setModIdx(newMod);
 
-				modules[newMod].sumTPWeight += ndTPWeight;
-				//doubleSendPack[5 * nNode + newMod] += ndTPWeight;
+				 modules[newMod].numMembers++;
+				 modules[newMod].exitPr = bestResult.exitPr2;
+				 modules[newMod].sumPr = bestResult.sumPr2;
+				 modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+				 modules[newMod].sumTPWeight += ndTPWeight;
 
-				if (nd.IsDangling()) {
-					modules[newMod].sumDangling += ndSize;
-					modules[oldMod].sumDangling -= ndSize;
-				}
+				 if (nd.IsDangling()) {
+				 modules[newMod].sumDangling += ndSize;
+				 modules[oldMod].sumDangling -= ndSize;
+				 }
 
-				modules[oldMod].numMembers--;
-				modules[oldMod].exitPr = bestResult.exitPr1;
-				modules[oldMod].sumPr = bestResult.sumPr1;
-				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-				modules[oldMod].sumTPWeight -= ndTPWeight;
+				 modules[oldMod].numMembers--;
+				 modules[oldMod].exitPr = bestResult.exitPr1;
+				 modules[oldMod].sumPr = bestResult.sumPr1;
+				 modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+				 modules[oldMod].sumTPWeight -= ndTPWeight;
 
-				if (modules[oldMod].numMembers == 0) {
-					nEmptyMod++;
-					nModule--;
-				}
+				 if (modules[oldMod].numMembers == 0) {
+				 nEmptyMod++;
+				 nModule--;
+				 }
+				 */
 
 				// the following code block is for sending information of updated vertex across the other processes
+				intSendPack[elementMoved] = vertexIndex;
 
-				intSendPack[numMoved] = vertexIndex;
+				intSendPack[indexer + elementMoved] = bestResult.newModule;
 
-				/*				if (iteration == 0) {
-				 printf(
-				 "Tracking move for rank:%d, the vertex Id is:%d,the new module is:%d, the old module is:%d\n",
-				 rank, vertexIndex, bestResult.newModule, oldMod);
-				 }*/
+				doubleSendPack[elementMoved] = bestResult.exitPr1;
 
-				intSendPack[1 * stripSize + numMoved] = oldMod;
-				intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
-
-				doubleSendPack[numMoved] = bestResult.diffCodeLen;
-				doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
-				doubleSendPack[2 * stripSize + numMoved] = bestResult.sumPr2;
-				doubleSendPack[3 * stripSize + numMoved] = bestResult.exitPr1;
-				doubleSendPack[4 * stripSize + numMoved] = bestResult.exitPr2;
+				doubleSendPack[indexer + elementMoved] = bestResult.exitPr2;
 
 				sumAllExitPr = bestResult.newSumExitPr;
 
 				codeLengthReduction += bestResult.diffCodeLen;
 				//codeLength += bestResult.diffCodeLen;
 
-				numMoved++;
+				elementMoved++;
+
+				printf(
+						"tag:%d, vertexIndex:%d, new module:%d, old module:%d, bestResult.sumPr2:%f, bestResult.sumPr1:%f, bestResult.exitPr2:%f, bestResult.exitPr1:%f, detecting issues in rank:%d\n",
+						mpi_tag, vertexIndex, newMod, oldMod, bestResult.sumPr2,
+						bestResult.sumPr1, bestResult.exitPr2,
+						bestResult.exitPr1, rank);
 
 				// update activeNodes and isActives vectors.
 				// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
@@ -1176,12 +1180,22 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 				rank, numberOfElements, elementCount);
 	}
 
-	intSendPack[intPackSize - 1] = numMoved;
+	intSendPack[intPackSize - 1] = elementMoved;
 	doubleSendPack[doublePackSize - 1] = sumAllExitPr - currentSumAllExitPr;
 	codeLength += codeLengthReduction;
 	doubleSendPack[doublePackSize - 2] = codeLengthReduction;
 
+	//TODO: the below code segment will be tested pretty soon for all2all communication
+
+	/*	MPI_Allgather(intSendPack, intPackSize, MPI_INT, intRecvAll, intPackSize,
+	 MPI_INT, MPI_COMM_WORLD);
+
+	 MPI_Allgather(floatSendPack, doublePackSize, MPI_FLOAT, floatRecvAll,
+	 doublePackSize,
+	 MPI_FLOAT, MPI_COMM_WORLD);*/
+
 	for (int processId = 0; processId < size; processId++) {
+
 		if (processId != rank) {
 
 			gettimeofday(&startMPISendRecv, NULL);
@@ -1209,8 +1223,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 				int nodeIndex = intReceivePack[z];
 
 				Node& nod = nodes[nodeIndex];
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+				int newModule = intReceivePack[indexer + z];
 
 				//we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
 				//int nodeIndex = nod.ID();
@@ -1226,10 +1240,9 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 					}
 
 					modules[newModule].numMembers++;
-					modules[newModule].exitPr = doubleReceivePack[4 * stripSize
-							+ z];
-					modules[newModule].sumPr = doubleReceivePack[2 * stripSize
-							+ z];
+					modules[newModule].exitPr = doubleReceivePack[indexer + z];
+					modules[newModule].sumPr = modules[newModule].sumPr
+							+ nod.Size();
 					modules[newModule].stayPr = modules[newModule].exitPr
 							+ modules[newModule].sumPr;
 
@@ -1241,10 +1254,9 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 					}
 
 					modules[oldModule].numMembers--;
-					modules[oldModule].exitPr = doubleReceivePack[3 * stripSize
-							+ z];
-					modules[oldModule].sumPr = doubleReceivePack[1 * stripSize
-							+ z];
+					modules[oldModule].exitPr = doubleReceivePack[z];
+					modules[oldModule].sumPr = modules[oldModule].sumPr
+							- nod.Size();
 					modules[oldModule].stayPr = modules[oldModule].exitPr
 							+ modules[oldModule].sumPr;
 
@@ -1254,6 +1266,13 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 						nEmptyMod++;
 						nModule--;
 					}
+
+					printf(
+							"tag:%d, vertexIndex:%d, new module:%d, old module:%d, modules[newModule].sumPr:%f, modules[oldModule].sumPr:%f, modules[newModule].exitPr:%f, modules[oldModule].exitPr:%f, detecting issues in rank:%d\n",
+							mpi_tag, nodeIndex, newModule, oldModule,
+							modules[newModule].sumPr, modules[oldModule].sumPr,
+							modules[newModule].exitPr,
+							modules[oldModule].exitPr, rank);
 
 					// update activeNodes and isActives vectors.
 					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
@@ -1268,7 +1287,81 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 					}
 				}
 			}
+		} else {
 
+			int totalElementSentFromSender = intSendPack[intPackSize - 1];
+
+			for (int z = 0; z < totalElementSentFromSender; z++) {
+
+				int nodeIndex = intSendPack[z];
+
+				Node& nod = nodes[nodeIndex];
+
+				int oldModule = nod.modIdx;
+
+				int newModule = intSendPack[indexer + z];
+
+				//we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
+				//int nodeIndex = nod.ID();
+				nod.setModIdx(newModule);
+
+				if (oldModule != newModule) {
+
+					numMoved++;
+
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
+
+					modules[newModule].numMembers++;
+					modules[newModule].exitPr = doubleSendPack[indexer + z];
+					modules[newModule].sumPr = modules[newModule].sumPr
+							+ nod.Size();
+					modules[newModule].stayPr = modules[newModule].exitPr
+							+ modules[newModule].sumPr;
+
+					modules[newModule].sumTPWeight += nod.TeleportWeight();
+
+					if (nod.IsDangling()) {
+						modules[newModule].sumDangling += nod.Size();
+						modules[oldModule].sumDangling -= nod.Size();
+					}
+
+					modules[oldModule].numMembers--;
+					modules[oldModule].exitPr = doubleSendPack[z];
+					modules[oldModule].sumPr = modules[oldModule].sumPr
+							- nod.Size();
+					modules[oldModule].stayPr = modules[oldModule].exitPr
+							+ modules[oldModule].sumPr;
+
+					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
+
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
+
+					printf(
+							"tag:%d, vertexIndex:%d, new module:%d, old module:%d, modules[newModule].sumPr:%f, modules[oldModule].sumPr:%f, modules[newModule].exitPr:%f, modules[oldModule].exitPr:%f, detecting issues in rank:%d\n",
+							mpi_tag, nodeIndex, newModule, oldModule,
+							modules[newModule].sumPr, modules[oldModule].sumPr,
+							modules[newModule].exitPr,
+							modules[oldModule].exitPr, rank);
+
+					// update activeNodes and isActives vectors.
+					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
+					for (link_iterator linkIt = nod.outLinks.begin();
+							linkIt != nod.outLinks.end(); linkIt++) {
+						isActives[linkIt->first] = 1;// set as an active nodes.
+					}
+					for (link_iterator linkIt = nod.inLinks.begin();
+							linkIt != nod.inLinks.end(); linkIt++) {
+						isActives[linkIt->first] = 1;// set as an active nodes.
+
+					}
+				}
+			}
 		}
 
 	}
@@ -1295,6 +1388,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 	delete[] intReceivePack;
 	delete[] doubleSendPack;
 	delete[] doubleReceivePack;
+	delete[] floatSendPack;
+	delete[] floatRecvAll;
 
 	gettimeofday(&endPrioMove, NULL);
 
@@ -2542,8 +2637,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	}
 
 // Generate random sequential order of active nodes.
-	const unsigned int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
-	const unsigned int doublePackSize = 5 * stripSize + 3;
+	const unsigned int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int doublePackSize = 2 * stripSize + 3;
 
 	int* intSendPack = new (nothrow) int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
 	int* intReceivePack = new (nothrow) int[intPackSize]();
@@ -2565,9 +2660,11 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	int numMoved = 0;
 
 	SPNodeCountforSending = 0;
+	int indexer = 1 * stripSize;
 
 // Move each node to one of its neighbor modules in random sequential order.
 	for (int i = start; i < end; i++) {
+
 		int superNodeIndex = randomGlobalArray[i];
 		SuperNode& nd = superNodes[superNodeIndex]; // look at i_th Node of the random sequential order.
 		bool moduleUpdate = false;
@@ -2595,6 +2692,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 		for (link_iterator linkIt = nd.inLinks.begin();
 				linkIt != nd.inLinks.end(); linkIt++) {
+
 			int newMod = superNodes[linkIt->first].ModIdx();
 
 			if (inFlowFromMod.count(newMod) > 0) {
@@ -2696,8 +2794,6 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				if (currentResult.diffCodeLen < bestResult.diffCodeLen) {
 
-					moduleUpdate = true;
-
 					//save new module id
 					bestResult.newModule = currentResult.newModule;
 
@@ -2724,77 +2820,71 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			// update related to newMod...
 
 			int newMod = bestResult.newModule;
-			int spMembers = nd.members.size();
 
-			if (oldMod < newMod) {
+			/*
+			 int spMembers = nd.members.size();
 
-				if (modules[newMod].numMembers == 0) {
-					nEmptyMod--;
-					nModule++;
-				}
+			 if (modules[newMod].numMembers == 0) {
+			 nEmptyMod--;
+			 nModule++;
+			 }
 
-				nd.setModIdx(newMod);
+			 nd.setModIdx(newMod);
 
-				for (int j = 0; j < spMembers; j++) {
-					nd.members[j]->setModIdx(newMod);
-				}
+			 for (int j = 0; j < spMembers; j++) {
+			 nd.members[j]->setModIdx(newMod);
+			 }
 
-				modules[newMod].numMembers += spMembers;
-				modules[newMod].exitPr = bestResult.exitPr2;
-				modules[newMod].sumPr = bestResult.sumPr2;
-				modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
-				modules[newMod].sumTPWeight += ndTPWeight;
+			 modules[newMod].numMembers += spMembers;
+			 modules[newMod].exitPr = bestResult.exitPr2;
+			 modules[newMod].sumPr = bestResult.sumPr2;
+			 modules[newMod].stayPr = bestResult.exitPr2 + bestResult.sumPr2;
+			 modules[newMod].sumTPWeight += ndTPWeight;
 
-				double spDanglingSize = nd.DanglingSize();
-				if (spDanglingSize > 0.0) {
-					modules[newMod].sumDangling += spDanglingSize;
-					modules[oldMod].sumDangling -= spDanglingSize;
-				}
+			 double spDanglingSize = nd.DanglingSize();
+			 if (spDanglingSize > 0.0) {
+			 modules[newMod].sumDangling += spDanglingSize;
+			 modules[oldMod].sumDangling -= spDanglingSize;
+			 }
 
-				// update related to the oldMod...
-				modules[oldMod].numMembers -= spMembers;
-				modules[oldMod].exitPr = bestResult.exitPr1;
-				modules[oldMod].sumPr = bestResult.sumPr1;
-				modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
-				modules[oldMod].sumTPWeight -= ndTPWeight;
+			 // update related to the oldMod...
+			 modules[oldMod].numMembers -= spMembers;
+			 modules[oldMod].exitPr = bestResult.exitPr1;
+			 modules[oldMod].sumPr = bestResult.sumPr1;
+			 modules[oldMod].stayPr = bestResult.exitPr1 + bestResult.sumPr1;
+			 modules[oldMod].sumTPWeight -= ndTPWeight;
 
-				if (modules[oldMod].numMembers == 0) {
-					nEmptyMod++;
-					nModule--;
-				}
+			 if (modules[oldMod].numMembers == 0) {
+			 nEmptyMod++;
+			 nModule--;
+			 }
+			 */
 
-				//the following code is for sending module update across processors
-				intSendPack[SPNodeCountforSending] = superNodeIndex;
-				intSendPack[1 * stripSize + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * stripSize + SPNodeCountforSending] =
-						bestResult.newModule;
-				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
-				doubleSendPack[1 * stripSize + SPNodeCountforSending] =
-						bestResult.sumPr1;
-				doubleSendPack[2 * stripSize + SPNodeCountforSending] =
-						bestResult.sumPr2;
-				doubleSendPack[3 * stripSize + SPNodeCountforSending] =
-						bestResult.exitPr1;
-				doubleSendPack[4 * stripSize + SPNodeCountforSending] =
-						bestResult.exitPr2;
-				sumAllExitPr = bestResult.newSumExitPr;
+			//the following code is for sending module update across processors
+			intSendPack[SPNodeCountforSending] = superNodeIndex;
 
-				SPNodeCountforSending++;
+			intSendPack[indexer + SPNodeCountforSending] = bestResult.newModule;
 
-				codeLengthReduction += bestResult.diffCodeLen;
+			doubleSendPack[SPNodeCountforSending] = bestResult.exitPr1;
 
-				numMoved += spMembers;
+			doubleSendPack[indexer + SPNodeCountforSending] =
+					bestResult.exitPr2;
 
-				// update activeNodes and isActives vectors.
-				// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
-				for (link_iterator linkIt = nd.outLinks.begin();
-						linkIt != nd.outLinks.end(); linkIt++)
-					isActives[linkIt->first] = 1;	// set as an active nodes.
+			sumAllExitPr = bestResult.newSumExitPr;
 
-				for (link_iterator linkIt = nd.inLinks.begin();
-						linkIt != nd.inLinks.end(); linkIt++)
-					isActives[linkIt->first] = 1;	// set as an active nodes.*/
-			}
+			SPNodeCountforSending++;
+
+			codeLengthReduction += bestResult.diffCodeLen;
+
+			// update activeNodes and isActives vectors.
+			// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
+			for (link_iterator linkIt = nd.outLinks.begin();
+					linkIt != nd.outLinks.end(); linkIt++)
+				isActives[linkIt->first] = 1;	// set as an active nodes.
+
+			for (link_iterator linkIt = nd.inLinks.begin();
+					linkIt != nd.inLinks.end(); linkIt++)
+				isActives[linkIt->first] = 1;	// set as an active nodes.*/
 		}
 
 		elementCount++;
@@ -2846,8 +2936,8 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				int spMembers = nod.members.size();
 
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+				int newModule = intReceivePack[indexer + z];
 
 				if (oldModule != newModule) {
 
@@ -2866,12 +2956,13 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 					modules[newModule].numMembers += spMembers;
 
-					modules[newModule].exitPr = doubleReceivePack[4 * stripSize
-							+ z];
-					modules[newModule].sumPr = doubleReceivePack[2 * stripSize
-							+ z];
+					modules[newModule].exitPr = doubleReceivePack[indexer + z];
+					modules[newModule].sumPr = modules[newModule].sumPr
+							+ nod.size;
+
 					modules[newModule].stayPr = modules[newModule].exitPr
 							+ modules[newModule].sumPr;
+
 					modules[newModule].sumTPWeight += nod.TeleportWeight();
 
 					double spDanglingSize = nod.DanglingSize();
@@ -2883,12 +2974,14 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 					modules[oldModule].numMembers -= spMembers;
 
-					modules[oldModule].exitPr = doubleReceivePack[3 * stripSize
-							+ z];
-					modules[oldModule].sumPr = doubleReceivePack[1 * stripSize
-							+ z];
+					modules[oldModule].exitPr = doubleReceivePack[z];
+
+					modules[oldModule].sumPr = modules[oldModule].sumPr
+							- nod.size;
+
 					modules[oldModule].stayPr = modules[oldModule].exitPr
 							+ modules[oldModule].sumPr;
+
 					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
 
 					if (modules[oldModule].numMembers == 0) {
@@ -2907,6 +3000,84 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 						isActives[linkIt->first] = 1;// set as an active nodes.
 				}
 			}
+		} else {
+
+			int totalSPNodefromSender = intSendPack[intPackSize - 1];
+
+			for (int z = 0; z < totalSPNodefromSender; z++) {
+
+				int nodeIndex = intSendPack[z];
+
+				SuperNode& nod = superNodes[nodeIndex];	// I didn't need to send the indices from the processes because every process has already this information from counts and displs
+
+				int spMembers = nod.members.size();
+
+				int oldModule = nod.modIdx;
+
+				int newModule = intSendPack[indexer + z];
+
+				if (oldModule != newModule) {
+
+					numMoved += spMembers;
+
+					if (modules[newModule].numMembers == 0) {
+						nEmptyMod--;
+						nModule++;
+					}
+
+					nod.setModIdx(newModule);
+
+					for (int j = 0; j < spMembers; j++) {
+						nod.members[j]->setModIdx(newModule);
+					}
+
+					modules[newModule].numMembers += spMembers;
+
+					modules[newModule].exitPr = doubleSendPack[indexer + z];
+					modules[newModule].sumPr = modules[newModule].sumPr
+							+ nod.size;
+
+					modules[newModule].stayPr = modules[newModule].exitPr
+							+ modules[newModule].sumPr;
+
+					modules[newModule].sumTPWeight += nod.TeleportWeight();
+
+					double spDanglingSize = nod.DanglingSize();
+
+					if (spDanglingSize > 0.0) {
+						modules[newModule].sumDangling += spDanglingSize;
+						modules[oldModule].sumDangling -= spDanglingSize;
+					}
+
+					modules[oldModule].numMembers -= spMembers;
+
+					modules[oldModule].exitPr = doubleSendPack[z];
+
+					modules[oldModule].sumPr = modules[oldModule].sumPr
+							- nod.size;
+
+					modules[oldModule].stayPr = modules[oldModule].exitPr
+							+ modules[oldModule].sumPr;
+
+					modules[oldModule].sumTPWeight -= nod.TeleportWeight();
+
+					if (modules[oldModule].numMembers == 0) {
+						nEmptyMod++;
+						nModule--;
+					}
+
+					// update activeNodes and isActives vectors.
+					// We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
+					for (link_iterator linkIt = nod.outLinks.begin();
+							linkIt != nod.outLinks.end(); linkIt++)
+						isActives[linkIt->first] = 1;// set as an active nodes.
+
+					for (link_iterator linkIt = nod.inLinks.begin();
+							linkIt != nod.inLinks.end(); linkIt++)
+						isActives[linkIt->first] = 1;// set as an active nodes.
+				}
+			}
+
 		}
 	}
 
