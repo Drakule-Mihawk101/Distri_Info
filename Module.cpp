@@ -222,10 +222,8 @@ void Network::initiate(int numTh, double& total_time_initiate,
 
 	calculateSteadyState(numTh, total_time_calcSteady);
 
-	/*
-	 printf("time for calculateSteadyState in rank:%d is %f\n", rank,
-	 total_time_calcSteady);
-	 */
+	printf("Total time for calculating calculateSteadyState in rank:%d is:%f\n",
+			rank, total_time_calcSteady);
 
 	gettimeofday(&endT, NULL);
 	cout << "Time for calculating steady state of nodes (eigenvector): "
@@ -453,6 +451,7 @@ void Network::calibrate(int numTh, int tag, double& total_time_calibrate) {
 			+ sum_stay_log_stay - allNodes_log_allNodes;
 
 	gettimeofday(&endCali, NULL);
+
 	total_time_calibrate += elapsedTimeInSec(startCali, endCali);
 }
 
@@ -486,7 +485,7 @@ int Network::move(int iteration, double& total_time_move,
 
 	int stripSize = ceil(totalElemenets / size) + 1;
 
-	const unsigned int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
 	const unsigned int doublePackSize = 5 * stripSize + 3;
 
 	int* randomGlobalArray = new int[nNode]();
@@ -732,8 +731,7 @@ int Network::move(int iteration, double& total_time_move,
 				// the following code block is for sending information of updated vertex across the other processes
 
 				intSendPack[numMoved] = vertexIndex;
-				intSendPack[1 * stripSize + numMoved] = oldMod;
-				intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
+				intSendPack[1 * stripSize + numMoved] = bestResult.newModule;
 
 				doubleSendPack[numMoved] = bestResult.diffCodeLen;
 				doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
@@ -783,8 +781,8 @@ int Network::move(int iteration, double& total_time_move,
 				int nodeIndex = intReceivePack[z];
 
 				Node& nod = nodes[nodeIndex];
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+				int newModule = intReceivePack[1 * stripSize + z];
 
 				//we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
 				//int nodeIndex = nod.ID();
@@ -878,7 +876,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 
 	int stripSize = ceil(totalElemenets / size) + 1;
 
-	const int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
 	const int doublePackSize = 5 * stripSize + 3;
 
 	int* randomGlobalArray = new int[nActive]();
@@ -1136,8 +1134,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 				 rank, vertexIndex, bestResult.newModule, oldMod);
 				 }*/
 
-				intSendPack[1 * stripSize + numMoved] = oldMod;
-				intSendPack[2 * stripSize + numMoved] = bestResult.newModule;
+				intSendPack[1 * stripSize + numMoved] = bestResult.newModule;
 
 				doubleSendPack[numMoved] = bestResult.diffCodeLen;
 				doubleSendPack[1 * stripSize + numMoved] = bestResult.sumPr1;
@@ -1209,8 +1206,8 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 				int nodeIndex = intReceivePack[z];
 
 				Node& nod = nodes[nodeIndex];
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+				int newModule = intReceivePack[1 * stripSize + z];
 
 				//we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
 				//int nodeIndex = nod.ID();
@@ -2130,7 +2127,7 @@ int Network::moveSuperNodes(int iteration) {
 
 	int stripSize = ceil(totalElemenets / size) + 1;
 
-	const unsigned int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
 	const unsigned int doublePackSize = 5 * stripSize + 3;
 
 	int* intSendPack = new (nothrow) int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
@@ -2351,9 +2348,9 @@ int Network::moveSuperNodes(int iteration) {
 
 				//the following code is for sending module update across processors
 				intSendPack[SPNodeCountforSending] = superNodeIndex;
-				intSendPack[1 * stripSize + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * stripSize + SPNodeCountforSending] =
+				intSendPack[1 * stripSize + SPNodeCountforSending] =
 						bestResult.newModule;
+
 				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
 				doubleSendPack[1 * stripSize + SPNodeCountforSending] =
 						bestResult.sumPr1;
@@ -2409,8 +2406,9 @@ int Network::moveSuperNodes(int iteration) {
 
 				int spMembers = nod.members.size();
 
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+
+				int newModule = intReceivePack[1 * stripSize + z];
 
 				if (oldModule != newModule) {
 
@@ -2542,7 +2540,7 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 	}
 
 // Generate random sequential order of active nodes.
-	const unsigned int intPackSize = 3 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
+	const unsigned int intPackSize = 2 * stripSize + 3; // 3*nActive+1 index will save emptyModCount and 3*nActive+2 index will save nModuleCount
 	const unsigned int doublePackSize = 5 * stripSize + 3;
 
 	int* intSendPack = new (nothrow) int[intPackSize](); // multiplier 3 for 3 different elements of index, newModules, oldModules and +1 for elementCount
@@ -2765,18 +2763,24 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				//the following code is for sending module update across processors
 				intSendPack[SPNodeCountforSending] = superNodeIndex;
-				intSendPack[1 * stripSize + SPNodeCountforSending] = oldMod;
-				intSendPack[2 * stripSize + SPNodeCountforSending] =
+
+				intSendPack[1 * stripSize + SPNodeCountforSending] =
 						bestResult.newModule;
+
 				doubleSendPack[SPNodeCountforSending] = bestResult.diffCodeLen;
+
 				doubleSendPack[1 * stripSize + SPNodeCountforSending] =
 						bestResult.sumPr1;
+
 				doubleSendPack[2 * stripSize + SPNodeCountforSending] =
 						bestResult.sumPr2;
+
 				doubleSendPack[3 * stripSize + SPNodeCountforSending] =
 						bestResult.exitPr1;
+
 				doubleSendPack[4 * stripSize + SPNodeCountforSending] =
 						bestResult.exitPr2;
+
 				sumAllExitPr = bestResult.newSumExitPr;
 
 				SPNodeCountforSending++;
@@ -2846,8 +2850,9 @@ int Network::prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 
 				int spMembers = nod.members.size();
 
-				int oldModule = intReceivePack[1 * stripSize + z];
-				int newModule = intReceivePack[2 * stripSize + z];
+				int oldModule = nod.modIdx;
+
+				int newModule = intReceivePack[1 * stripSize + z];
 
 				if (oldModule != newModule) {
 

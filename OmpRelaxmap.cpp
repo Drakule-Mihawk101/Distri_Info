@@ -52,6 +52,7 @@ void generate_network_from_module(Network &newNetwork, Module* mod,
 		double& total_time_calibrate);
 void generate_network_from_module(Network &newNetwork, Module* mod,
 		map<int, int> &origNodeID, int iteration, double& total_time_calibrate);
+
 void print_twoLevel_Cluster(Network network, string networkName, string outDir);
 
 void findAssignedPart(int* start, int* end, int numNodes, int numTh, int myID);
