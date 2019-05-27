@@ -245,7 +245,8 @@ public:
 			double vThresh);
 	void convertModulesToSuperNodes(int numTh,
 			double& total_time_convertModules,
-			int& total_iterations_convertModules);
+			int& total_iterations_convertModules,
+			double& total_time_MPISendRecvConvertModules);
 	//void generateSuperNodesFromSubModules();	// generate SuperNodes from SubModule..
 	void generateSuperNodesFromSubModules(int numTh); // parallel version of the above function.
 

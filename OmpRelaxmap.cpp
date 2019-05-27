@@ -36,17 +36,23 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		double& total_time_prioritize_Spmove, int& total_iterations_priorMove,
 		int& total_iterations_priorMoveSP, int& total_iterations_updateMembers,
 		int& total_iterations_convertModules, double& total_time_MPISendRecv,
-		double& total_time_MPISendRecvSP);
+		double& total_time_MPISendRecvSP,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules);
 void partition_module_network(Network &network, int numTh, double threshold,
 		int maxIter, bool fast, double& total_time_move,
 		int& total_iterations_move, double& total_time_updateMembers,
 		double& total_time_convertModules, int& total_iterations_updateMembers,
-		int& total_iterations_convertModules);
+		int& total_iterations_convertModules,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules);
 void generate_sub_modules(Network &network, int numTh, double threshold,
 		int maxIter, double& total_time_move, int& total_iterations_move,
 		double& total_time_updateMembers, double& total_time_convertModules,
 		double& total_time_calibrate, int& total_iterations_updateMembers,
-		int& total_iterations_convertModules);
+		int& total_iterations_convertModules,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules);
 void generate_network_from_module(Network &newNetwork, Module* mod,
 		map<int, int>& origNodeID, int numTh, int iteration,
 		double& total_time_calibrate);
@@ -196,6 +202,8 @@ int main(int argc, char *argv[]) {
 	double total_time_prioritize_Spmove = 0.0;
 	double total_time_MPISendRecv = 0.0;
 	double total_time_MPISendRecvSP = 0.0;
+	double total_time_MPISendRecvUpdateMem = 0.0;
+	double total_time_MPISendRecvConvertModules = 0.0;
 	int total_iterations_move = 0;
 	int total_iterations_priorMove = 0;
 	int total_iterations_priorMoveSP = 0;
@@ -244,7 +252,8 @@ int main(int argc, char *argv[]) {
 			total_time_prioritize_Spmove, total_iterations_priorMove,
 			total_iterations_priorMoveSP, total_iterations_updateMembers,
 			total_iterations_convertModules, total_time_MPISendRecv,
-			total_time_MPISendRecvSP);
+			total_time_MPISendRecvSP, total_time_MPISendRecvUpdateMem,
+			total_time_MPISendRecvConvertModules);
 
 	cout << "SuperStep [" << step << "] - codeLength = "
 			<< origNetwork.CodeLength() / log(2.0) << " in "
@@ -274,7 +283,8 @@ int main(int argc, char *argv[]) {
 				total_time_prioritize_Spmove, total_iterations_priorMove,
 				total_iterations_priorMoveSP, total_iterations_updateMembers,
 				total_iterations_convertModules, total_time_MPISendRecv,
-				total_time_MPISendRecvSP);
+				total_time_MPISendRecvSP, total_time_MPISendRecvUpdateMem,
+				total_time_MPISendRecvConvertModules);
 
 		step++;
 		cout << "SuperStep [" << step << "] - codeLength = "
@@ -329,6 +339,19 @@ int main(int argc, char *argv[]) {
 			<< origNetwork.calculateCodeLength(total_time_calcCodelen)
 					/ log(2.0) << endl;
 
+	double modularity = origNetwork.calculateModularityScore();
+
+	printf("\nmodularity score for the network:%f\n", modularity);
+
+	double communication_time = total_time_MPISendRecv
+			+ total_time_MPISendRecvSP + total_time_MPISendRecvConvertModules;
+
+	double total_time = total_time_prioritize_move
+			+ total_time_prioritize_Spmove
+			+ total_time_MPISendRecvConvertModules + total_time_updateMembers;
+
+	double computation_time = total_time - communication_time;
+
 	printf("time for initiate function in rank:%d is %f\n", rank,
 			total_time_initiate);
 
@@ -363,6 +386,10 @@ int main(int argc, char *argv[]) {
 	printf(
 			"time for MPI_SendRecv in prioritize_Spmove in rank:%d is %f for total:%d iterations\n",
 			rank, total_time_MPISendRecvSP, total_iterations_priorMoveSP);
+
+	printf("time for computataion in rank:%d is %f\n", rank, computation_time);
+	printf("time for MPI_communication in rank:%d is %f\n", rank,
+			communication_time);
 
 //Print two-level clustering result in .tree file
 	print_twoLevel_Cluster(origNetwork, networkName, outDir);
@@ -399,7 +426,9 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		double& total_time_prioritize_Spmove, int& total_iterations_priorMove,
 		int& total_iterations_priorMoveSP, int& total_iterations_updateMembers,
 		int& total_iterations_convertModules, double& total_time_MPISendRecv,
-		double& total_time_MPISendRecvSP) {
+		double& total_time_MPISendRecvSP,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules) {
 
 	double oldCodeLength = network.CodeLength();
 	int iter = 0;
@@ -524,7 +553,8 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		stop = false;
 
 		network.convertModulesToSuperNodes(tag, total_time_convertModules,
-				total_iterations_convertModules);
+				total_iterations_convertModules,
+				total_time_MPISendRecvConvertModules);
 
 		tConvert += elapsedTimeInSec(convert_T1, convert_T2);
 
@@ -620,7 +650,9 @@ void partition_module_network(Network &network, int numTh, double threshold,
 		int maxIter, bool fast, double& total_time_move,
 		int& total_iterations_move, double& total_time_updateMembers,
 		double& total_time_convertModules, int& total_iterations_updateMembers,
-		int& total_iterations_convertModules) {
+		int& total_iterations_convertModules,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules) {
 
 	int rank, size;
 
@@ -668,7 +700,8 @@ void partition_module_network(Network &network, int numTh, double threshold,
 
 		stop = false;
 		network.convertModulesToSuperNodes(numTh, total_time_convertModules,
-				total_iterations_convertModules);
+				total_iterations_convertModules,
+				total_time_MPISendRecvConvertModules);
 
 		int spIter = 0;
 		while (!stop && spIter < maxIter) {
@@ -704,7 +737,9 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 		int maxIter, double& total_time_move, int& total_iterations_move,
 		double& total_time_updateMembers, double& total_time_convertModules,
 		double& total_time_calibrate, int& total_iterations_updateMembers,
-		int& total_iterations_convertModules) {
+		int& total_iterations_convertModules,
+		double& total_time_MPISendRecvUpdateMem,
+		double& total_time_MPISendRecvConvertModules) {
 
 	int rank, size;
 
@@ -760,7 +795,9 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 					total_time_move, total_iterations_move,
 					total_time_updateMembers, total_time_convertModules,
 					total_iterations_updateMembers,
-					total_iterations_convertModules);	// fast = true..
+					total_iterations_convertModules,
+					total_time_MPISendRecvUpdateMem,
+					total_time_MPISendRecvConvertModules);	// fast = true..
 
 			int nActiveMods = newNetwork.smActiveMods.size();
 			// Adding sub-modules from a new network of the corresponding module to the list of subModules...
@@ -810,8 +847,9 @@ void generate_sub_modules(Network &network, int numTh, double threshold,
 		partition_module_network(newNetwork, numTh, threshold, maxIter, true,
 				total_time_move, total_iterations_move,
 				total_time_updateMembers, total_time_convertModules,
-				total_iterations_updateMembers,
-				total_iterations_convertModules); // fast = true..
+				total_iterations_updateMembers, total_iterations_convertModules,
+				total_time_MPISendRecvUpdateMem,
+				total_time_MPISendRecvConvertModules); // fast = true..
 
 		// Adding sub-modules from a new network of the corresponding module to the list of subModules...
 		int nActiveMods = newNetwork.smActiveMods.size();
