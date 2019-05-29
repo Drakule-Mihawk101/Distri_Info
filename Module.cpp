@@ -4191,6 +4191,7 @@ double Network::calculateCodeLength(double& total_time_calcCodelen) {
 
 	int size, rank;
 	int startIndex, endIndex;
+	const int arraySize = 3;
 
 	struct timeval startCalculateCode, endCalculateCode;
 
@@ -4199,8 +4200,17 @@ double Network::calculateCodeLength(double& total_time_calcCodelen) {
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-	double send_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
-	double receive_sum_exit_stay[3] = { 0.0, 0.0, 0.0 };
+	double* send_sum_exit_stay = new (nothrow) double[arraySize]();
+	//double receive_sum_exit_stay[arraySize] = { 0.0, 0.0, 0.0 };
+	//double* s_sum_exit_stay = new (nothrow) double[arraySize]();
+	double* recv_sum_all_exit_stay = new (nothrow) double[arraySize * size]();
+
+	if (!recv_sum_all_exit_stay || !send_sum_exit_stay) {
+		printf(
+				"ERROR in calculateCodeLength: process:%d does not have sufficient memory, process exiting...\n",
+				rank);
+		exit(1);
+	}
 
 	findAssignedPart(&startIndex, &endIndex, nNode, size, rank);
 
@@ -4242,17 +4252,30 @@ double Network::calculateCodeLength(double& total_time_calcCodelen) {
 	send_sum_exit_stay[1] = exit_log_exit;
 	send_sum_exit_stay[2] = stay_log_stay;
 
-	for (int processId = 0; processId < size; processId++) {
-		if (processId != rank) {
-			MPI_Sendrecv(send_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
-					receive_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
-					MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+	MPI_Allgather(send_sum_exit_stay, arraySize, MPI_DOUBLE,
+			recv_sum_all_exit_stay, arraySize, MPI_DOUBLE,
+			MPI_COMM_WORLD);
 
-			tempSumAllExit += receive_sum_exit_stay[0];
-			exit_log_exit += receive_sum_exit_stay[1];
-			stay_log_stay += receive_sum_exit_stay[2];
+	for (int p = 0; p < size; p++) {
+		if (rank != p) {
+			int startIndex = p * arraySize;
+			tempSumAllExit += recv_sum_all_exit_stay[startIndex];
+			exit_log_exit += recv_sum_all_exit_stay[startIndex + 1];
+			stay_log_stay += recv_sum_all_exit_stay[startIndex + 2];
 		}
 	}
+
+	/*	for (int processId = 0; processId < size; processId++) {
+	 if (processId != rank) {
+	 MPI_Sendrecv(send_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
+	 receive_sum_exit_stay, 3, MPI_DOUBLE, processId, 0,
+	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+
+	 tempSumAllExit += receive_sum_exit_stay[0];
+	 exit_log_exit += receive_sum_exit_stay[1];
+	 stay_log_stay += receive_sum_exit_stay[2];
+	 }
+	 }*/
 
 	double computedCodeLength = pLogP(tempSumAllExit) - 2.0 * exit_log_exit
 			+ stay_log_stay - allNodes_log_allNodes;
@@ -4262,6 +4285,8 @@ double Network::calculateCodeLength(double& total_time_calcCodelen) {
 	total_time_calcCodelen += elapsedTimeInSec(startCalculateCode,
 			endCalculateCode);
 
+	delete[] send_sum_exit_stay;
+	delete[] recv_sum_all_exit_stay;
 	return computedCodeLength;
 }
 
