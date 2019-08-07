@@ -469,44 +469,42 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		oldCodeLength = network.CodeLength();
 
 		if (fineTune) {
-			if (numTh == 1) {
-				if (prior) {
+			//if (numTh == 1) {
+			if (prior) {
+				numMoved = network.prioritize_move(vThresh, iter, inLoop,
+						total_time_prioritize_move, total_iterations_priorMove,
+						total_time_MPISendRecv);
 
-					numMoved = network.prioritize_move(vThresh, iter, inLoop,
-							total_time_prioritize_move,
-							total_iterations_priorMove, total_time_MPISendRecv);
-
-				} else {
-					numMoved = network.move(iter, total_time_move,
-							total_iterations_move);
-				}
 			} else {
-				if (prior) {
-					numMoved = network.prioritize_parallelMove(numTh,
-							tSequential, vThresh);
-				} else {
-					numMoved = network.parallelMove(numTh, tSequential);
-				}
+				numMoved = network.move(iter, total_time_move,
+						total_iterations_move);
 			}
+			/*} else {
+			 if (prior) {
+			 numMoved = network.prioritize_parallelMove(numTh,
+			 tSequential, vThresh);
+			 } else {
+			 numMoved = network.parallelMove(numTh, tSequential);
+			 }
+			 }*/
 		} else {
-			if (numTh == 1) {
-				if (prior) {
-					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
-							iter, inLoop, total_time_prioritize_Spmove,
-							total_iterations_priorMoveSP,
-							total_time_MPISendRecvSP);
-				} else {
-					numMoved = network.moveSuperNodes(iter);// If at least one node is moved, return true. Otherwise, return false.
-				}
+			//if (numTh == 1) {
+			if (prior) {
+				numMoved = network.prioritize_moveSPnodes(vThresh, tag, iter,
+						inLoop, total_time_prioritize_Spmove,
+						total_iterations_priorMoveSP, total_time_MPISendRecvSP);
 			} else {
-				if (prior) {
-					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
-							tSequential, vThresh);
-				} else {
-					numMoved = network.parallelMoveSuperNodes(numTh,
-							tSequential);
-				}
+				numMoved = network.moveSuperNodes(iter);// If at least one node is moved, return true. Otherwise, return false.
 			}
+			/*} else {
+			 if (prior) {
+			 numMoved = network.prioritize_parallelMoveSPnodes(numTh,
+			 tSequential, vThresh);
+			 } else {
+			 numMoved = network.parallelMoveSuperNodes(numTh,
+			 tSequential);
+			 }
+			 }*/
 		}
 		iter++;
 		/*
@@ -575,22 +573,21 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 
 			double innerOldCodeLength = network.CodeLength();
 
-			if (numTh == 1) {
-				if (prior) {
-					numMoved = network.prioritize_moveSPnodes(vThresh, tag,
-							spIter, inLoop, total_time_prioritize_Spmove,
-							total_iterations_priorMoveSP,
-							total_time_MPISendRecvSP);
-				} else
-					numMoved = network.moveSuperNodes(spIter);
-			} else {
-				if (prior)
-					numMoved = network.prioritize_parallelMoveSPnodes(numTh,
-							tSequential, vThresh);
-				else
-					numMoved = network.parallelMoveSuperNodes(numTh,
-							tSequential);
-			}
+			//if (numTh == 1) {
+			if (prior) {
+				numMoved = network.prioritize_moveSPnodes(vThresh, tag, spIter,
+						inLoop, total_time_prioritize_Spmove,
+						total_iterations_priorMoveSP, total_time_MPISendRecvSP);
+			} else
+				numMoved = network.moveSuperNodes(spIter);
+			/*} else {
+			 if (prior)
+			 numMoved = network.prioritize_parallelMoveSPnodes(numTh,
+			 tSequential, vThresh);
+			 else
+			 numMoved = network.parallelMoveSuperNodes(numTh,
+			 tSequential);
+			 }*/
 
 			spIter++;
 
