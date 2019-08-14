@@ -255,9 +255,12 @@ int main(int argc, char *argv[]) {
 			total_time_MPISendRecvSP, total_time_MPISendRecvUpdateMem,
 			total_time_MPISendRecvConvertModules);
 
-	cout << "SuperStep [" << step << "] - codeLength = "
-			<< origNetwork.CodeLength() / log(2.0) << " in "
-			<< origNetwork.NModule() << " modules." << endl;
+	/*	cout << "SuperStep [" << step << "] - codeLength = "
+	 << origNetwork.CodeLength() / log(2.0) << " in "
+	 << origNetwork.NModule() << " modules." << endl;*/
+
+	printf("SuperStep[%d] - codeLength = %f in %d modules.\n", step,
+			origNetwork.CodeLength() / log(2.0), origNetwork.NModule());
 
 	bool nextIter = true;
 
@@ -287,9 +290,13 @@ int main(int argc, char *argv[]) {
 				total_time_MPISendRecvConvertModules);
 
 		step++;
-		cout << "SuperStep [" << step << "] - codeLength = "
+
+		printf("SuperStep[%d] - codeLength = %f in %d modules.\n", step,
+				origNetwork.CodeLength() / log(2.0), origNetwork.NModule());
+
+/*		cout << "SuperStep [" << step << "] - codeLength = "
 				<< origNetwork.CodeLength() / log(2.0) << " in "
-				<< origNetwork.NModule() << " modules." << endl;
+				<< origNetwork.NModule() << " modules." << endl;*/
 
 		if ((oldCodeLength - origNetwork.CodeLength()) / log(2.0) < threshold
 				|| origNetwork.CodeLength() < 0.0) {
@@ -342,6 +349,15 @@ int main(int argc, char *argv[]) {
 	double modularity = origNetwork.calculateModularityScore();
 
 	printf("\nmodularity score for the network:%f\n", modularity);
+
+	double conductance = origNetwork.calculateConductance();
+
+	printf("\nconductance of the network:%f\n\n", conductance);
+
+/*	double cumulativeConductance = origNetwork.calculateConductancePerModule();
+
+	printf("\ncumulativeConductance of the network:%f\n\n",
+			cumulativeConductance);*/
 
 	double communication_time = total_time_MPISendRecv
 			+ total_time_MPISendRecvSP + total_time_MPISendRecvConvertModules;
@@ -451,7 +467,6 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 	gettimeofday(&outer_T1, NULL);
 
 	int nActiveUnits = (fineTune) ? network.NNode() : network.superNodes.size();
-	cout << nActiveUnits << ", ";
 
 // set initial active nodes list ...
 	vector<char>(nActiveUnits).swap(network.isActives);
@@ -557,7 +572,6 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		tConvert += elapsedTimeInSec(convert_T1, convert_T2);
 
 		nActiveUnits = network.superNodes.size();
-		cout << nActiveUnits << ", ";
 
 		// set initial active nodes list ...
 		vector<char>(nActiveUnits).swap(network.isActives);

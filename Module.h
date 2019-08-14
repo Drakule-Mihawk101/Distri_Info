@@ -222,6 +222,10 @@ public:
 	void displayInlinksforSuperNodes();
 	// find the value of the modularity for the discovered communities
 	double calculateModularityScore();
+	// calculate the conductance of the discovered communities
+	double calculateConductance();
+	// calculates the conductance of each module/cluster
+	double calculateConductancePerModule();
 	//void initiate();
 	void initiate(int numTh, double& total_time_initiate,
 			double& total_time_calibrate);
