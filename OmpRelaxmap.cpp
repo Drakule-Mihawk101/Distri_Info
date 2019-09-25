@@ -1,9 +1,3 @@
-/*
- *	Author:	Seung-Hee Bae (shbae@cs.washington.edu)
- *	Date:	Mar. 2014
- *	Copyright (C) since 2013,  Seung-Hee Bae, Bill Howe, Database Group at the University of Washington
- */
-
 #include <iostream>
 #include <cstdlib>
 #include <sstream>
@@ -294,9 +288,9 @@ int main(int argc, char *argv[]) {
 		printf("SuperStep[%d] - codeLength = %f in %d modules.\n", step,
 				origNetwork.CodeLength() / log(2.0), origNetwork.NModule());
 
-/*		cout << "SuperStep [" << step << "] - codeLength = "
-				<< origNetwork.CodeLength() / log(2.0) << " in "
-				<< origNetwork.NModule() << " modules." << endl;*/
+		/*		cout << "SuperStep [" << step << "] - codeLength = "
+		 << origNetwork.CodeLength() / log(2.0) << " in "
+		 << origNetwork.NModule() << " modules." << endl;*/
 
 		if ((oldCodeLength - origNetwork.CodeLength()) / log(2.0) < threshold
 				|| origNetwork.CodeLength() < 0.0) {
@@ -354,17 +348,16 @@ int main(int argc, char *argv[]) {
 
 	printf("\nconductance of the network:%f\n\n", conductance);
 
-/*	double cumulativeConductance = origNetwork.calculateConductancePerModule();
+	/*	double cumulativeConductance = origNetwork.calculateConductancePerModule();
 
-	printf("\ncumulativeConductance of the network:%f\n\n",
-			cumulativeConductance);*/
+	 printf("\ncumulativeConductance of the network:%f\n\n",
+	 cumulativeConductance);*/
 
 	double communication_time = total_time_MPISendRecv
-			+ total_time_MPISendRecvSP + total_time_MPISendRecvConvertModules;
+			+ total_time_MPISendRecvSP;
 
 	double total_time = total_time_prioritize_move
-			+ total_time_prioritize_Spmove
-			+ total_time_MPISendRecvConvertModules + total_time_updateMembers;
+			+ total_time_prioritize_Spmove;
 
 	double computation_time = total_time - communication_time;
 
@@ -546,6 +539,15 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		 << "\t(sec)\t";
 		 cout << "sumExitPr = " << network.SumAllExitPr() << "\t";
 		 cout << "numMoved:\t" << numMoved << endl;*/
+		/*		cout << "Iteration " << iter << ": code length =\t"
+		 << network.CodeLength() / log(2.0) << "\t, ";*/
+
+		//double codel = network.CodeLength() / log(2.0);
+		double unnecessary_time = 0.0;
+
+		printf("For rank:%d, Iteration:%d, code length:%f, numMoved:%d\n", rank,
+				iter, network.calculateCodeLength(unnecessary_time) / log(2.0),
+				numMoved);
 	}
 
 	int outerLoop = 1;
@@ -627,6 +629,14 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 			 << elapsedTimeInSec(outer_T1, inner_T2) << "\t(sec)\t";
 			 cout << "sumExitPr = " << network.SumAllExitPr() << "\t";
 			 cout << "numMoved:\t" << numMoved << endl;*/
+
+			double unnecessary_time = 0.0;
+
+			printf(
+					"For rank:%d, SuperIteration:%d, code length:%f, numMoved:%d\n",
+					rank, spIter,
+					network.calculateCodeLength(unnecessary_time) / log(2.0),
+					numMoved);
 		}
 
 		gettimeofday(&seq_T1, NULL);

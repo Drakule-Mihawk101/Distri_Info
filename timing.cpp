@@ -1,9 +1,3 @@
-/*
- *	Author:	Seung-Hee Bae (shbae@cs.washington.edu)
- *	Date:	Mar. 2014
- *	Copyright (C) since 2013,  Seung-Hee Bae, Bill Howe, Database Group at the University of Washington
- */
-
 #include <iostream>
 #include "timing.h"
 #include <sys/times.h>
