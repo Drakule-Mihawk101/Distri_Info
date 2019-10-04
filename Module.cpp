@@ -1104,7 +1104,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 
 	int stripSize = ceil(totalElements / size) + 1;
 
-	const int intPackSize = 2 * stripSize + 3;// 2*nActive+1 index will save emptyModCount and 2*nActive+2 index will save nModuleCount
+	const int intPackSize = 2 * stripSize + 3;  // 2*stripSize+1 index will save emptyModCount and 2*stripSize+2 index will save nModuleCount
 	const int doublePackSize = 2 * stripSize + 3;
 
 	int* randomGlobalArray = new int[nActive]();
@@ -1511,128 +1511,7 @@ int Network::prioritize_move(double vThresh, int iteration, bool inWhile,
 		}
 	}
 
-	/*	for (int i = 0; i < nNode; i++) {
-	 printf("proc rank:%d, after iteration:%d, nd[%d].exitPr:%f\n", rank,
-	 iteration, i, nodes[i].exitPr);
 
-	 }
-
-	 for (int i = 0; i < nNode; i++) {
-	 printf(
-	 "sumPr processor rank:%d, after iteration:%d, modules[%d].sumPr:%f\n",
-	 rank, iteration, i, modules[i].sumPr);
-
-	 }
-
-	 for (int i = 0; i < nNode; i++) {
-	 printf(
-	 "exitPr processor rank:%d, after iteration:%d, modules[%d].exitPr:%f\n",
-	 rank, iteration, i, modules[i].exitPr);
-
-	 }*/
-
-	/*	for (int i = 0; i < nNode; i++) {
-	 printf(
-	 "nodeTPWeight processor rank:%d, after iteration:%d, modules[%d].sumTPWeight:%f\n",
-	 rank, iteration, i, modules[i].sumTPWeight);
-
-	 }*/
-
-	/*for (int processId = 0; processId < size; processId++) {
-	 if (processId != rank) {
-
-	 gettimeofday(&startMPISendRecv, NULL);
-
-	 MPI_Sendrecv(intSendPack, intPackSize, MPI_INT, processId, mpi_tag,
-	 intReceivePack, intPackSize, MPI_INT, processId, mpi_tag,
-	 MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-
-	 MPI_Sendrecv(doubleSendPack, doublePackSize, MPI_DOUBLE, processId,
-	 mpi_tag, doubleReceivePack, doublePackSize, MPI_DOUBLE,
-	 processId, mpi_tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
-
-	 gettimeofday(&endMPISendRecv, NULL);
-
-	 total_time_MPISendRecv += elapsedTimeInSec(startMPISendRecv,
-	 endMPISendRecv);
-
-	 int totalElementSentFromSender = intReceivePack[intPackSize - 1];
-
-	 sumAllExitPr += doubleReceivePack[doublePackSize - 1];
-	 codeLength += doubleReceivePack[doublePackSize - 2];
-
-	 for (int z = 0; z < totalElementSentFromSender; z++) {
-
-	 int nodeIndex = intReceivePack[z];
-
-	 Node& nod = nodes[nodeIndex];
-	 int oldModule = nod.modIdx;
-	 int newModule = intReceivePack[1 * stripSize + z];
-
-	 //we need to do some tweaking here to get rid of the extra reduction of codelength because of the circular moves in distributed informap
-	 //int nodeIndex = nod.ID();
-	 nod.setModIdx(newModule);
-
-	 if (oldModule != newModule) {
-
-	 numMoved++;
-
-	 if (modules[newModule].numMembers == 0) {
-	 nEmptyMod--;
-	 nModule++;
-	 }
-
-	 modules[newModule].numMembers++;
-	 modules[newModule].exitPr = doubleReceivePack[3 * stripSize
-	 + z];
-	 modules[newModule].sumPr = doubleReceivePack[1 * stripSize
-	 + z];
-	 modules[newModule].stayPr = modules[newModule].exitPr
-	 + modules[newModule].sumPr;
-
-	 modules[newModule].sumTPWeight += nod.TeleportWeight();
-
-	 if (nod.IsDangling()) {
-	 modules[newModule].sumDangling += nod.Size();
-	 modules[oldModule].sumDangling -= nod.Size();
-	 }
-
-	 modules[oldModule].numMembers--;
-	 modules[oldModule].exitPr = doubleReceivePack[2 * stripSize
-	 + z];
-	 modules[oldModule].sumPr = doubleReceivePack[z];
-	 modules[oldModule].stayPr = modules[oldModule].exitPr
-	 + modules[oldModule].sumPr;
-
-	 modules[oldModule].sumTPWeight -= nod.TeleportWeight();
-
-	 if (modules[oldModule].numMembers == 0) {
-	 nEmptyMod++;
-	 nModule--;
-	 }
-
-	 // update activeNodes and isActives vectors.
-	 // We have to add the following nodes in activeNodes: neighbors, members in oldMod & newMod.
-	 for (link_iterator linkIt = nod.outLinks.begin();
-	 linkIt != nod.outLinks.end(); linkIt++) {
-	 isActives[linkIt->first] = 1;// set as an active nodes.
-	 }
-	 for (link_iterator linkIt = nod.inLinks.begin();
-	 linkIt != nod.inLinks.end(); linkIt++) {
-	 isActives[linkIt->first] = 1;// set as an active nodes.
-
-	 }
-	 }
-	 }
-	 }
-	 }
-	 */
-	/*	if (iteration == 0) {
-	 for (int i = 0; i < nNode; i++) {
-	 printf("distributed output in rank:%d, where i:%d, module:%d\n",
-	 rank, i, nodes[i].modIdx);
-	 }
-	 }*/
 
 	vector<int>().swap(activeNodes);
 	for (int i = 0; i < isActives.size(); i++) {

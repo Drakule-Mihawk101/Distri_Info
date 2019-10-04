@@ -15,7 +15,9 @@
 #include "Node.h"
 #include "Module.h"
 #include "FileIO.h"
+#include <cstring>
 #include <mpi.h>
+#include <metis.h>
 
 using namespace std;
 
@@ -180,6 +182,119 @@ void load_pajek_format_network(string fName, Network &network) {
 				<< " link(s) defined more than once" << endl;
 	else
 		cout << endl;
+}
+
+void load_csr_format_network(string fName, Network &network) {
+
+	int rank, size;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	char* token;
+	long total_vertex = 0, total_edges = 0;
+	int start_index = 0;
+	long current_vertex = 0;
+	idx_t index = 0;
+	long pointer = 0;
+
+	char FILENAME[fName.length() + 1];
+	strcpy(FILENAME, fName.c_str());
+
+	cout << "Reading network " << fName << " file\n" << flush;
+	FILE* fp = fopen(FILENAME, "r");
+
+	if (fp == NULL) {
+		printf("Could not open file\n");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("File open successful\n");
+	network.setNNode(0);
+
+	int nDoubleLinks = 0;
+	double newLinkWeight = 0.0;
+
+	char* line = NULL;
+	size_t len = 0;
+
+	if ((getline(&line, &len, fp) != -1)) {
+		token = strtok(line, " \n\t");
+
+		if (token != NULL) {
+			total_vertex = atol(token);
+			network.setNNode(total_vertex);
+			network.modules = vector<Module>(total_vertex);
+			network.nodes = vector<Node>(total_vertex);
+			network.xadj = (idx_t*) malloc((total_vertex + 1) * sizeof(idx_t));
+			network.xadj[index] = 0; //this will be 0 always as this is the starting index
+			network.part = (idx_t*) malloc(total_vertex * sizeof(idx_t));
+		}
+
+		token = strtok(NULL, " \n\t");
+
+		if (token != NULL) {
+			total_edges = atol(token);
+			network.adjacency = (idx_t*) malloc(
+					(2 * total_edges) * sizeof(idx_t));
+		}
+	}
+
+	for (int i = 0; i < total_vertex; i++) {
+		network.nodes[i].setID(i);
+		network.nodes[i].setNodeWeight(1.0);
+	}
+
+	network.setTotNodeWeights(total_vertex * 1.0);
+
+	while ((getline(&line, &len, fp) != -1)) {
+		if (strlen(line) <= 2) {
+			printf("end of file reached\n");
+			break;
+		}
+
+		token = strtok(line, " \n\t");
+
+		while (token != NULL) {
+			long edge = atoi(token);
+			if (!(network.Edges.count(make_pair(current_vertex, edge)) > 0
+					|| network.Edges.count(make_pair(edge, current_vertex)) > 0)) {
+				network.Edges[make_pair(current_vertex, edge)] = 1.0;
+			}
+			network.adjacency[pointer] = edge;
+			pointer++;
+			token = strtok(NULL, " \n\t");
+		}
+		current_vertex++;
+		index++;
+		network.xadj[index] = pointer;
+	}
+
+	network.setNEdge(network.Edges.size());
+
+	network.nvtxs = index;
+	network.ncon = 1;
+	network.nParts = size;
+	int ret = METIS_PartGraphKway(&network.nvtxs, &network.ncon, network.xadj,
+			network.adjacency, NULL, NULL, NULL, &network.nParts, NULL, NULL,
+			NULL, &network.objval, network.part);
+
+	fclose(fp);
+	if (line) {
+		free(line);
+	}
+
+	for (unsigned part_i = 0; part_i < network.nvtxs; part_i++) {
+		printf("metis rank:%d, part_i:%d, network.part[%d]:%d\n", rank, part_i,
+				part_i, network.part[part_i]);
+		if (network.part[part_i] == rank) {
+			network.myVertices.push_back(part_i);
+		}
+	}
+
+	cout << "done! (found " << network.NNode() << " nodes and "
+			<< network.NEdge() << " edges.)" << flush;
+
 }
 
 /*

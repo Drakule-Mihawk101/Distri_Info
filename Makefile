@@ -2,7 +2,7 @@
 CXX  = mpic++
 LINK = $(CXX)
 #CXXFLAGS = -I -Wall -g 
-CXXFLAGS = -g -Wall -O0 -fopenmp #-I #-Wall -O3 -funroll-loops -pipe 
+CXXFLAGS = -g -Wall -O0 -fopenmp  #-I #-Wall -O3 -funroll-loops -pipe 
 #CXXFLAGS = -g -Wall -fopenmp #-I #-Wall -O3 -funroll-loops -pipe 
 LFLAGS =  -g -fopenmp -lm -Wall -Werror -O0
 
@@ -14,7 +14,7 @@ FILES = OmpRelaxmap.cpp Node.cpp Module.cpp FileIO.cpp timing.cpp
 OBJECTS = $(FILES:.cpp=.o)
 
 $(TARGET): ${OBJECTS}
-	$(LINK) $(LFLAGS) $^ -o $@
+	$(LINK) $(LFLAGS) $^ -o $@ -lmetis
 
 all: $(TARGET)
 

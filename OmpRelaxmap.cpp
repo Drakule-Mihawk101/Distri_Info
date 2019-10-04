@@ -15,6 +15,7 @@
 #include "FileIO.h"
 #include "timing.h"
 #include <mpi.h>
+#include <metis.h>
 
 using namespace std;
 
@@ -121,7 +122,11 @@ int main(int argc, char *argv[]) {
 
 	if (networkType == ".net") {
 		load_pajek_format_network(networkFile, origNetwork);
-	} else {
+	}
+	else if(networkType == ".csr"){
+		load_csr_format_network(networkFile, origNetwork);
+	}
+	else {
 		load_linkList_format_network(networkFile, origNetwork);
 	}
 	//MPI_Send(&origNetwork,1,)

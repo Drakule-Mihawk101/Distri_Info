@@ -8,6 +8,7 @@
 #include <set>
 #include "Node.h"
 #include "MersenneTwister.h"
+#include <metis.h>
 
 //class Module;
 //class Network;
@@ -108,6 +109,15 @@ public:
 	MTRand *R;
 
 	int *processTags;
+	idx_t* xadj;
+	idx_t* adjacency;
+	idx_t nvtxs;
+	idx_t ncon;
+	idx_t nParts;
+	idx_t objval;
+	idx_t* part;
+	vector<long> myVertices;
+
 
 	vector<Module> modules;
 	vector<Node> nodes;
