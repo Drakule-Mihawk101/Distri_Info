@@ -18,6 +18,7 @@
 #include <cstring>
 #include <mpi.h>
 #include <metis.h>
+#include <parmetis.h>
 
 using namespace std;
 
@@ -184,7 +185,7 @@ void load_pajek_format_network(string fName, Network &network) {
 		cout << endl;
 }
 
-void load_csr_format_network(string fName, Network &network) {
+void load_csr_format_network(string fName, Network &network, string metisFile) {
 
 	int rank, size;
 
@@ -192,11 +193,135 @@ void load_csr_format_network(string fName, Network &network) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 	char* token;
-	long total_vertex = 0, total_edges = 0;
+	int total_vertex = 0, total_edges = 0;
 	int start_index = 0;
-	long current_vertex = 0;
+	int current_vertex = 0;
+
+	char FILENAME[fName.length() + 1];
+	strcpy(FILENAME, fName.c_str());
+
+	char METISFILE[metisFile.length() + 1];
+	strcpy(METISFILE, metisFile.c_str());
+
+	cout << "Reading network " << fName << " file\n" << flush;
+	FILE* fp = fopen(FILENAME, "r");
+
+	if (fp == NULL) {
+		printf("Could not open file\n");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("File open successful\n");
+	network.setNNode(0);
+
+	int nDoubleLinks = 0;
+	double newLinkWeight = 0.0;
+
+	char* line = NULL;
+	size_t len = 0;
+
+	if ((getline(&line, &len, fp) != -1)) {
+		token = strtok(line, " \n\t");
+
+		if (token != NULL) {
+			total_vertex = atoi(token);
+			network.setNNode(total_vertex);
+			network.modules = vector<Module>(total_vertex);
+			network.nodes = vector<Node>(total_vertex);
+		}
+
+		token = strtok(NULL, " \n\t");
+
+		if (token != NULL) {
+			total_edges = atoi(token);
+		}
+	}
+
+	for (int i = 0; i < total_vertex; i++) {
+		network.nodes[i].setID(i);
+		network.nodes[i].setNodeWeight(1.0);
+	}
+
+	network.setTotNodeWeights(total_vertex * 1.0);
+
+	while ((getline(&line, &len, fp) != -1)) {
+		if (strlen(line) <= 2) {
+			printf("end of file reached\n");
+			break;
+		}
+
+		token = strtok(line, " \n\t");
+
+		while (token != NULL) {
+			int edge = atoi(token);
+			if (!(network.Edges.count(make_pair(current_vertex, edge)) > 0
+					|| network.Edges.count(make_pair(edge, current_vertex)) > 0)) {
+				network.Edges[make_pair(current_vertex, edge)] = 1.0;
+			}
+			token = strtok(NULL, " \n\t");
+		}
+		current_vertex++;
+	}
+
+	network.setNEdge(network.Edges.size());
+
+	network.allNodes = (int*) malloc(total_vertex * sizeof(int));
+
+	if (size == 1) {
+		for (int i = 0; i < total_vertex; i++) {
+			network.allNodes[i] = 0;
+		}
+	} else {
+
+		// now read the metis file
+		cout << "Reading metis " << metisFile << " file\n" << flush;
+		FILE* mp = fopen(METISFILE, "r");
+
+		if (mp == NULL) {
+			printf("Could not open metis file\n");
+			exit(EXIT_FAILURE);
+		}
+
+		while ((getline(&line, &len, mp) != -1)) {
+			if (strlen(line) <= 2) {
+				printf("end of metis file reached\n");
+				break;
+			}
+
+			token = strtok(line, " \n\t");
+			int index = atoi(token);
+			token = strtok(NULL, " \n\t");
+			int pRank = atoi(token);
+			network.allNodes[index] = pRank;
+		}
+
+		MPI_Barrier(MPI_COMM_WORLD);
+		fclose(mp);
+	}
+
+	fclose(fp);
+	if (line) {
+		free(line);
+	}
+
+	cout << "done! (found " << network.NNode() << " nodes and "
+			<< network.NEdge() << " edges.)" << flush;
+
+}
+
+void old_load_csr_format_network(string fName, Network &network) {
+
+	int rank, size;
+
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	char* token;
+	int total_vertex = 0, total_edges = 0;
+	int start_index = 0;
+	int current_vertex = 0;
 	idx_t index = 0;
-	long pointer = 0;
+	int pointer = 0;
 
 	char FILENAME[fName.length() + 1];
 	strcpy(FILENAME, fName.c_str());
@@ -256,7 +381,7 @@ void load_csr_format_network(string fName, Network &network) {
 		token = strtok(line, " \n\t");
 
 		while (token != NULL) {
-			long edge = atoi(token);
+			int edge = atoi(token);
 			if (!(network.Edges.count(make_pair(current_vertex, edge)) > 0
 					|| network.Edges.count(make_pair(edge, current_vertex)) > 0)) {
 				network.Edges[make_pair(current_vertex, edge)] = 1.0;
@@ -265,6 +390,8 @@ void load_csr_format_network(string fName, Network &network) {
 			pointer++;
 			token = strtok(NULL, " \n\t");
 		}
+		network.vertex_adjacencyIndex.insert(
+				make_pair(current_vertex, pointer - 1));
 		current_vertex++;
 		index++;
 		network.xadj[index] = pointer;
@@ -272,25 +399,35 @@ void load_csr_format_network(string fName, Network &network) {
 
 	network.setNEdge(network.Edges.size());
 
+	/*	for (int i = 0; i < 2 * network.Edges.size(); i++) {
+	 printf("pram rank:%d, network.adjacency[%d]:%d\n", rank, i,
+	 network.adjacency[i]);
+	 }*/
+
 	network.nvtxs = index;
 	network.ncon = 1;
 	network.nParts = size;
-	int ret = METIS_PartGraphKway(&network.nvtxs, &network.ncon, network.xadj,
-			network.adjacency, NULL, NULL, NULL, &network.nParts, NULL, NULL,
-			NULL, &network.objval, network.part);
+	/*	int ret = METIS_PartGraphKway(&network.nvtxs, &network.ncon, network.xadj,
+	 network.adjacency, NULL, NULL, NULL, &network.nParts, NULL, NULL,
+	 NULL, &network.objval, network.part);*/
 
 	fclose(fp);
 	if (line) {
 		free(line);
 	}
 
-	for (unsigned part_i = 0; part_i < network.nvtxs; part_i++) {
-		printf("metis rank:%d, part_i:%d, network.part[%d]:%d\n", rank, part_i,
-				part_i, network.part[part_i]);
-		if (network.part[part_i] == rank) {
-			network.myVertices.push_back(part_i);
-		}
-	}
+	/*	for (unsigned part_i = 0; part_i < network.nvtxs; part_i++) {
+	 printf("metis rank:%d, part_i:%d, network.part[%d]:%d\n", rank, part_i,
+	 part_i, network.part[part_i]);
+	 if (network.part[part_i] == rank) {
+	 network.myVertices.push_back(part_i);
+	 }
+	 }*/
+	/*
+	 for (int i = 0; i < network.NNode(); i++) {
+	 printf("prometis rank:%d, nodeId:%d, processor id:%d\n", rank, i,
+	 network.part[i]);
+	 }*/
 
 	cout << "done! (found " << network.NNode() << " nodes and "
 			<< network.NEdge() << " edges.)" << flush;

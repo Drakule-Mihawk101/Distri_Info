@@ -9,6 +9,7 @@
 #include "Node.h"
 #include "MersenneTwister.h"
 #include <metis.h>
+#include <parmetis.h>
 
 //class Module;
 //class Network;
@@ -116,16 +117,48 @@ public:
 	idx_t nParts;
 	idx_t objval;
 	idx_t* part;
-	vector<long> myVertices;
+	vector<int> myVertices;
 
+	//parmetis datastorage
+
+	idx_t *vtxdist;
+
+	idx_t *parmetis_xadj;
+
+	idx_t *parmetis_adjacency;
+
+	idx_t *vwgt;
+
+	idx_t *adjwgt;
+
+	idx_t wgtflag;
+
+	idx_t numflag;
+
+	idx_t parmetis_ncon;
+
+	idx_t *parmetis_nParts;
+
+	real_t *tpwgts;
+
+	real_t *ubvec;
+
+	idx_t *options;
+
+	idx_t edgecut;
+
+	idx_t *parmetis_part;
+
+	int* allNodes; //this contains the merging result of all the nodes from different rank parmetis output
 
 	vector<Module> modules;
 	vector<Node> nodes;
 	vector<SuperNode> superNodes;
-	vector<int> emptyModules;// keep the list of the indices of empty modules.
-	vector<int> smActiveMods;// keep the list of the indices of small active modules.
-	vector<int> lgActiveMods;// keep the list of the indices of large active modules.
-	map<pair<int, int>, double> Edges;// pair<int, int> will be src and desc of an edge and double is the corresponding weight.
+	vector<int> emptyModules; // keep the list of the indices of empty modules.
+	vector<int> smActiveMods; // keep the list of the indices of small active modules.
+	vector<int> lgActiveMods; // keep the list of the indices of large active modules.
+	map<pair<int, int>, double> Edges; // pair<int, int> will be src and desc of an edge and double is the corresponding weight.
+	map<int, int> vertex_adjacencyIndex;
 
 	vector<int> danglings;	// node index of dangling nodes in nodes vector.
 
@@ -136,6 +169,7 @@ public:
 								 // two-vectors for maintaining activeNodes for prioritizing.
 	vector<char> isActives;	// 0 - inactive, 1 - active nodes. Working as a boolean array.
 	vector<int> activeNodes;	// Actual node IDs for active nodes.
+	map<int, int> activeVertices;
 
 	// Constructors and member functions
 	Network();
@@ -241,10 +275,23 @@ public:
 	int prioritize_move(double vThresh, int iteration, bool inWhile,
 			double& total_time_prioritize_move, int& total_iterations_priorMove,
 			double& total_time_MPISendRecv);
+
+	int old_prioritize_move(double vThresh, int iteration, bool inWhile,
+			double& total_time_prioritize_move, int& total_iterations_priorMove,
+			double& total_time_MPISendRecv);
+	int preold_prioritize_move(double vThresh, int iteration, bool inWhile,
+			double& total_time_prioritize_move, int& total_iterations_priorMove,
+			double& total_time_MPISendRecv);
 	int parallelMove(int numTh, double & tUpdate);
 	int prioritize_parallelMove(int numTh, double & tUpdate, double vThresh);
 	int moveSuperNodes(int iteration);
+
 	int prioritize_moveSPnodes(double vThresh, int tag, int iteration,
+			bool inWhile, double& total_time_prioritize_Spmove,
+			int& total_iterations_priorSPNodes,
+			double& total_time_MPISendRecvSP);
+
+	int old_prioritize_moveSPnodes(double vThresh, int tag, int iteration,
 			bool inWhile, double& total_time_prioritize_Spmove,
 			int& total_iterations_priorSPNodes,
 			double& total_time_MPISendRecvSP);
@@ -265,6 +312,7 @@ public:
 	void updateCodeLength(int numTh, bool isSPNode);
 	void copyModule(Module * newM, Module * oldM);	// copy from oldM to newM.
 	void copyModule(int newM, int oldM);// copy modules[oldM] to modules[newM].
+	void buildParMetis();
 };
 
 #endif

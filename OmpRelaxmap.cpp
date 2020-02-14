@@ -16,6 +16,7 @@
 #include "timing.h"
 #include <mpi.h>
 #include <metis.h>
+#include <parmetis.h>
 
 using namespace std;
 
@@ -101,9 +102,11 @@ int main(int argc, char *argv[]) {
 	if (priorFlag == "prior")
 		prior = true;
 
+	string metisFile = string(argv[10]);
+
 	bool includeSelfLinks = false;
-	if (argc == 11) {
-		string selfLinks(argv[10]);
+	if (argc == 12) {
+		string selfLinks(argv[11]);
 		if (selfLinks == "selflinks")
 			includeSelfLinks = true;
 	}
@@ -122,11 +125,9 @@ int main(int argc, char *argv[]) {
 
 	if (networkType == ".net") {
 		load_pajek_format_network(networkFile, origNetwork);
-	}
-	else if(networkType == ".csr"){
-		load_csr_format_network(networkFile, origNetwork);
-	}
-	else {
+	} else if (networkType == ".csr") {
+		load_csr_format_network(networkFile, origNetwork, metisFile);
+	} else {
 		load_linkList_format_network(networkFile, origNetwork);
 	}
 	//MPI_Send(&origNetwork,1,)
@@ -141,6 +142,9 @@ int main(int argc, char *argv[]) {
 	double totNodeWeights = origNetwork.TotNodeWeights();
 
 	cout << "total Node weights = " << totNodeWeights << endl;
+
+	//here let's build the parmetis graph
+	//origNetwork.buildParMetis();
 
 	gettimeofday(&start, NULL);
 
@@ -469,9 +473,12 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 // set initial active nodes list ...
 	vector<char>(nActiveUnits).swap(network.isActives);
 	vector<int>(nActiveUnits).swap(network.activeNodes);
+	map<int, int>().swap(network.activeVertices);
+
 	for (int i = 0; i < nActiveUnits; i++) {
 		network.activeNodes[i] = i;
 		network.isActives[i] = 0;	// initially set inactive nodes.
+		network.activeVertices.insert(make_pair(i, 1));
 	}
 
 	int numMoved = 0;
@@ -550,9 +557,11 @@ void stochastic_greedy_partition(Network &network, int numTh, double threshold,
 		//double codel = network.CodeLength() / log(2.0);
 		double unnecessary_time = 0.0;
 
-		printf("For rank:%d, Iteration:%d, code length:%f, numMoved:%d\n", rank,
-				iter, network.calculateCodeLength(unnecessary_time) / log(2.0),
-				numMoved);
+		printf(
+				"For rank:%d, Iteration:%d, code length:%f, numMoved:%d, number of active nodes:%ld\n",
+				rank, iter,
+				network.calculateCodeLength(unnecessary_time) / log(2.0),
+				numMoved, network.activeNodes.size());
 	}
 
 	int outerLoop = 1;

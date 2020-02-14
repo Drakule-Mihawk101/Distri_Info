@@ -14,7 +14,7 @@ FILES = OmpRelaxmap.cpp Node.cpp Module.cpp FileIO.cpp timing.cpp
 OBJECTS = $(FILES:.cpp=.o)
 
 $(TARGET): ${OBJECTS}
-	$(LINK) $(LFLAGS) $^ -o $@ -lmetis
+	$(LINK) $(LFLAGS) $^ -o $@ -lparmetis -lmetis 
 
 all: $(TARGET)
 
